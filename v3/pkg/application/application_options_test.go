@@ -205,6 +205,17 @@ func TestLinuxOptions_Defaults(t *testing.T) {
 	}
 }
 
+func TestLinuxWindow_UserAgent_DefaultIsEmpty(t *testing.T) {
+	// Regression test for https://github.com/wailsapp/wails/issues/4734
+	// WebviewApplicationNameForUserAgent must default to empty so that the standard
+	// WebKit user agent is used unchanged. A non-empty default causes third-party
+	// services (e.g. CAPTCHA providers) to misidentify the client as a bot.
+	opts := LinuxWindow{}
+	if opts.WebviewApplicationNameForUserAgent != "" {
+		t.Errorf("WebviewApplicationNameForUserAgent should default to empty string, got %q", opts.WebviewApplicationNameForUserAgent)
+	}
+}
+
 func TestIOSOptions_Defaults(t *testing.T) {
 	opts := IOSOptions{}
 

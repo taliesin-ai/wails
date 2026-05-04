@@ -869,10 +869,10 @@ func windowMinimize(window pointer) {
 	gtkWindowMinimize(window)
 }
 
-func windowNew(application pointer, menu pointer, windowId uint, gpuPolicy int) (pointer, pointer, pointer) {
+func windowNew(application pointer, menu pointer, _ LinuxMenuStyle, windowId uint, gpuPolicy WebviewGpuPolicy, appNameForUserAgent string) (pointer, pointer, pointer) {
 	window := gtkApplicationWindowNew(application)
 	gObjectRefSink(window)
-	webview := windowNewWebview(windowId, gpuPolicy)
+	webview := windowNewWebview(windowId, int(gpuPolicy), appNameForUserAgent)
 	vbox := gtkBoxNew(GtkOrientationVertical, 0)
 	gtkContainerAdd(window, vbox)
 	gtkWidgetSetName(vbox, "webview-box")
@@ -884,7 +884,7 @@ func windowNew(application pointer, menu pointer, windowId uint, gpuPolicy int) 
 	return pointer(window), pointer(webview), pointer(vbox)
 }
 
-func windowNewWebview(parentId uint, gpuPolicy int) pointer {
+func windowNewWebview(parentId uint, gpuPolicy int, appNameForUserAgent string) pointer {
 	manager := webkitUserContentManagerNew()
 	webkitUserContentManagerRegisterScriptMessageHandler(manager, "external")
 	wv := webkitNewWithUserContentManager(manager)
@@ -911,10 +911,9 @@ func windowNewWebview(parentId uint, gpuPolicy int) pointer {
 	}
 
 	settings := webkitWebViewGetSettings(wv)
-	webkitSettingsSetUserAgentWithApplicationDetails(
-		settings,
-		"wails.io",
-		"")
+	if appNameForUserAgent != "" {
+		webkitSettingsSetUserAgentWithApplicationDetails(settings, appNameForUserAgent, "")
+	}
 	webkitSettingsSetHardwareAccelerationPolicy(settings, gpuPolicy)
 	webkitWebViewSetSettings(wv, settings)
 	return wv

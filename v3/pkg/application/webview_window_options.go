@@ -701,4 +701,14 @@ type LinuxWindow struct {
 
 	// MenuStyle controls how the menu is displayed (GTK4 only, ignored on GTK3)
 	MenuStyle LinuxMenuStyle
+
+	// WebviewApplicationNameForUserAgent appends an application identifier to the
+	// default WebKit2GTK user agent string. When set, the result looks like:
+	//   "Mozilla/5.0 ... AppleWebKit/... <WebviewApplicationNameForUserAgent>"
+	//
+	// Leave empty (the default) to keep the standard WebKit user agent unchanged.
+	// A non-standard user agent can cause third-party services (such as CAPTCHA
+	// providers) to misidentify the client as a bot; see
+	// https://github.com/wailsapp/wails/issues/4734.
+	WebviewApplicationNameForUserAgent string
 }
