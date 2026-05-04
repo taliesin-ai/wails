@@ -1114,13 +1114,13 @@ func (w *linuxWebviewWindow) minimise() {
 	C.gtk_window_minimize(w.gtkWindow())
 }
 
-func windowNew(application pointer, menu pointer, menuStyle LinuxMenuStyle, windowId uint, gpuPolicy WebviewGpuPolicy) (window, webview, vbox pointer) {
+func windowNew(application pointer, menu pointer, menuStyle LinuxMenuStyle, windowId uint, gpuPolicy WebviewGpuPolicy, appNameForUserAgent string) (window, webview, vbox pointer) {
 	window = pointer(C.gtk_application_window_new((*C.GtkApplication)(application)))
 	C.g_object_ref_sink(C.gpointer(window))
 
 	C.attach_action_group_to_widget((*C.GtkWidget)(window))
 
-	webview = windowNewWebview(windowId, gpuPolicy)
+	webview = windowNewWebview(windowId, gpuPolicy, appNameForUserAgent)
 	vbox = pointer(C.gtk_box_new(C.GTK_ORIENTATION_VERTICAL, 0))
 	name := C.CString("webview-box")
 	defer C.free(unsafe.Pointer(name))
@@ -1145,7 +1145,7 @@ func windowNew(application pointer, menu pointer, menuStyle LinuxMenuStyle, wind
 	return
 }
 
-func windowNewWebview(parentId uint, gpuPolicy WebviewGpuPolicy) pointer {
+func windowNewWebview(parentId uint, gpuPolicy WebviewGpuPolicy, appNameForUserAgent string) pointer {
 	c := NewCalloc()
 	defer c.Free()
 	manager := C.webkit_user_content_manager_new()
@@ -1157,6 +1157,9 @@ func windowNewWebview(parentId uint, gpuPolicy WebviewGpuPolicy) pointer {
 
 	// Create web view with settings
 	settings := C.webkit_settings_new()
+	if appNameForUserAgent != "" {
+		C.webkit_settings_set_user_agent_with_application_details(settings, c.String(appNameForUserAgent), c.String(""))
+	}
 	// WebKitGTK 6.0: webkit_web_view_new_with_user_content_manager() was removed
 	// Use create_webview_with_user_content_manager() helper instead
 	webView := C.create_webview_with_user_content_manager(manager)

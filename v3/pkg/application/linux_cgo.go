@@ -1381,10 +1381,10 @@ func (w *linuxWebviewWindow) minimise() {
 	C.gtk_window_iconify(w.gtkWindow())
 }
 
-func windowNew(application pointer, menu pointer, _ LinuxMenuStyle, windowId uint, gpuPolicy WebviewGpuPolicy) (window, webview, vbox pointer) {
+func windowNew(application pointer, menu pointer, _ LinuxMenuStyle, windowId uint, gpuPolicy WebviewGpuPolicy, appNameForUserAgent string) (window, webview, vbox pointer) {
 	window = pointer(C.gtk_application_window_new((*C.GtkApplication)(application)))
 	C.g_object_ref_sink(C.gpointer(window))
-	webview = windowNewWebview(windowId, gpuPolicy)
+	webview = windowNewWebview(windowId, gpuPolicy, appNameForUserAgent)
 	vbox = pointer(C.gtk_box_new(C.GTK_ORIENTATION_VERTICAL, 0))
 	name := C.CString("webview-box")
 	defer C.free(unsafe.Pointer(name))
@@ -1398,7 +1398,7 @@ func windowNew(application pointer, menu pointer, _ LinuxMenuStyle, windowId uin
 	return
 }
 
-func windowNewWebview(parentId uint, gpuPolicy WebviewGpuPolicy) pointer {
+func windowNewWebview(parentId uint, gpuPolicy WebviewGpuPolicy, appNameForUserAgent string) pointer {
 	c := NewCalloc()
 	defer c.Free()
 	manager := C.webkit_user_content_manager_new()
@@ -1425,7 +1425,9 @@ func windowNewWebview(parentId uint, gpuPolicy WebviewGpuPolicy) pointer {
 			nil)
 	})
 	settings := C.webkit_web_view_get_settings((*C.WebKitWebView)(unsafe.Pointer(webView)))
-	C.webkit_settings_set_user_agent_with_application_details(settings, c.String("wails.io"), c.String(""))
+	if appNameForUserAgent != "" {
+		C.webkit_settings_set_user_agent_with_application_details(settings, c.String(appNameForUserAgent), c.String(""))
+	}
 
 	switch gpuPolicy {
 	case WebviewGpuPolicyAlways:
