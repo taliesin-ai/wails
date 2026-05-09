@@ -16,6 +16,14 @@ const DROP_TARGET_ATTRIBUTE = 'data-file-drop-target';
 const DROP_TARGET_ACTIVE_CLASS = 'file-drop-target-active';
 let currentDropTarget: Element | null = null;
 
+// Element details captured at DOM drop time.
+// On Windows the drop flow is: DOM drop event → postMessageWithAdditionalObjects → Go
+// resolves paths → calls HandlePlatformFileDrop back via execJS.  That async round-trip
+// means the element may already have been replaced by HTMX (or any other dynamic DOM
+// library) before HandlePlatformFileDrop runs.  Caching the details synchronously at
+// drop time eliminates the race.
+let pendingDropElementDetails: { id: string; classList: string[]; attributes: { [key: string]: string } } | null = null;
+
 const PositionMethod                    = 0;
 const CenterMethod                      = 1;
 const CloseMethod                       = 2;
@@ -640,23 +648,32 @@ class Window {
         if ((window as any)._wails?.flags?.enableFileDrop === false) {
             return; // File drops disabled, ignore the drop
         }
-        
-        const element = document.elementFromPoint(x, y);
-        const dropTarget = getDropTargetElement(element);
 
-        if (!dropTarget) {
-            // Drop was not on a designated drop target - ignore
-            return;
-        }
+        let elementDetails: { id: string; classList: string[]; attributes: { [key: string]: string } };
 
-        const elementDetails = {
-            id: dropTarget.id,
-            classList: Array.from(dropTarget.classList),
-            attributes: {} as { [key: string]: string },
-        };
-        for (let i = 0; i < dropTarget.attributes.length; i++) {
-            const attr = dropTarget.attributes[i];
-            elementDetails.attributes[attr.name] = attr.value;
+        if (pendingDropElementDetails !== null) {
+            // Windows path: use details captured synchronously at DOM drop time.
+            // The element may have been replaced by HTMX (or any dynamic DOM library)
+            // during the async Go round-trip that resolved the file paths.
+            elementDetails = pendingDropElementDetails;
+            pendingDropElementDetails = null;
+        } else {
+            // macOS/Linux path: called directly from native code with no prior DOM drop
+            // event, so look up the element by the drop coordinates.
+            const element = document.elementFromPoint(x, y);
+            const dropTarget = getDropTargetElement(element);
+            if (!dropTarget) {
+                return;
+            }
+            elementDetails = {
+                id: dropTarget.id,
+                classList: Array.from(dropTarget.classList),
+                attributes: {} as { [key: string]: string },
+            };
+            for (let i = 0; i < dropTarget.attributes.length; i++) {
+                const attr = dropTarget.attributes[i];
+                elementDetails.attributes[attr.name] = attr.value;
+            }
         }
 
         const payload = {
@@ -667,7 +684,7 @@ class Window {
         };
 
         this[callerSym](FilesDropped, payload);
-        
+
         // Clean up native drag state after drop
         cleanupNativeDrag();
     }
@@ -808,15 +825,38 @@ function setupDropTargetListeners() {
             return;
         }
         dragEnterCounter = 0;
-        
+
         if (currentDropTarget) {
             currentDropTarget.classList.remove(DROP_TARGET_ACTIVE_CLASS);
             currentDropTarget = null;
         }
 
-        // On Windows, handle file drops via JavaScript
-        // On macOS/Linux, native code will call HandlePlatformFileDrop
+        // On Windows, handle file drops via JavaScript.
+        // Capture drop-target element details synchronously here, before the async
+        // postMessageWithAdditionalObjects → Go round-trip.  HTMX (and other dynamic
+        // DOM libraries) may swap out the element during that round-trip, so
+        // re-querying document.elementFromPoint inside HandlePlatformFileDrop would
+        // miss it.  The captured details are stored in pendingDropElementDetails and
+        // consumed by HandlePlatformFileDrop when it is called back from Go.
         if (canResolveFilePaths()) {
+            // Reset any stale pending details from a previous drop.
+            pendingDropElementDetails = null;
+
+            const dropEventTarget = document.elementFromPoint(event.clientX, event.clientY);
+            const dropTarget = getDropTargetElement(dropEventTarget);
+            if (dropTarget) {
+                const attrs: { [key: string]: string } = {};
+                for (let i = 0; i < dropTarget.attributes.length; i++) {
+                    const attr = dropTarget.attributes[i];
+                    attrs[attr.name] = attr.value;
+                }
+                pendingDropElementDetails = {
+                    id: dropTarget.id,
+                    classList: Array.from(dropTarget.classList),
+                    attributes: attrs,
+                };
+            }
+
             const files: File[] = [];
             if (event.dataTransfer.items) {
                 for (const item of event.dataTransfer.items) {
@@ -830,9 +870,12 @@ function setupDropTargetListeners() {
                     files.push(file);
                 }
             }
-            
+
             if (files.length > 0) {
                 resolveFilePaths(event.clientX, event.clientY, files);
+            } else {
+                // No files means HandlePlatformFileDrop won't be called; clear cache.
+                pendingDropElementDetails = null;
             }
         }
     }, false);
