@@ -46,11 +46,12 @@ func ToolDockerMounts(_ *DockerMountsOptions) error {
 	gopath := firstGOPATHEntry()
 	if gopath != "" {
 		hostPath := filepath.ToSlash(gopath)
-		mounts = append(mounts, fmt.Sprintf("-v '%s/pkg/mod:/go/pkg/mod'", hostPath))
+		mounts = append(mounts, fmt.Sprintf(`-v "%s/pkg/mod:/go/pkg/mod"`, hostPath))
 	}
 
 	// Parse go.mod for local replace directives and add volume mounts.
 	// The container project root is /app; replace paths must be remapped accordingly.
+	gomodDir, _ := filepath.Abs(".")
 	data, err := os.ReadFile("go.mod")
 	if err == nil {
 		f, err := modfile.Parse("go.mod", data, nil)
@@ -81,13 +82,22 @@ func ToolDockerMounts(_ *DockerMountsOptions) error {
 				// which maps to /app inside the container. path.Clean handles ".." correctly.
 				var containerPath string
 				if filepath.IsAbs(relPath) {
-					// Absolute host paths can't be reliably remapped; use as-is.
-					containerPath = filepath.ToSlash(relPath)
+					// Windows drive-letter absolute paths (e.g. C:\...) cannot be mapped
+					// to a valid Linux container destination path — skip them.
+					if len(relPath) >= 2 && relPath[1] == ':' {
+						continue
+					}
+					// Unix absolute paths: compute offset from project root → /app.
+					rel, err := filepath.Rel(gomodDir, hostAbsPath)
+					if err != nil {
+						continue
+					}
+					containerPath = path.Clean("/app/" + filepath.ToSlash(rel))
 				} else {
 					containerPath = path.Clean("/app/" + relPath)
 				}
 
-				mounts = append(mounts, fmt.Sprintf("-v '%s:%s:ro'", hostDockerPath, containerPath))
+				mounts = append(mounts, fmt.Sprintf(`-v "%s:%s:ro"`, hostDockerPath, containerPath))
 			}
 		}
 	}
