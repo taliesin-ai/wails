@@ -59,6 +59,15 @@ static void stopAppEventLoop(void) {
 }
 @end
 
+// HasRegisteredURLSchemes returns YES if the running app bundle declares at
+// least one CFBundleURLTypes entry. When NO, no kAEGetURL Apple Event can
+// arrive (LaunchServices does not dispatch URL events to processes that never
+// registered a scheme), so we can skip the event-loop wait entirely.
+static BOOL HasRegisteredURLSchemes(void) {
+    NSArray *urlTypes = [[[NSBundle mainBundle] infoDictionary] objectForKey:@"CFBundleURLTypes"];
+    return urlTypes != nil && [urlTypes count] > 0;
+}
+
 // CaptureLaunchURL briefly runs an NSApplication event loop so LaunchServices
 // can deliver any pending kAEGetURL Apple Event (which it only does after the
 // app has "finished launching").  The run loop is stopped as soon as the URL
@@ -104,8 +113,12 @@ const launchURLCaptureTimeout = 0.3
 // captureLaunchURL briefly runs an NSApplication event loop so that
 // LaunchServices can deliver any pending kAEGetURL Apple Event (e.g. when
 // this process was force-launched via "open -n URL").
-// Returns the URL string, or "" if none arrived within the timeout.
+// Returns "" immediately if the app has no registered URL schemes (no Apple
+// Event can arrive in that case), or if no event arrives within the timeout.
 func captureLaunchURL() string {
+	if C.HasRegisteredURLSchemes() == 0 {
+		return ""
+	}
 	cURL := C.CaptureLaunchURL(C.double(launchURLCaptureTimeout))
 	if cURL == nil {
 		return ""
