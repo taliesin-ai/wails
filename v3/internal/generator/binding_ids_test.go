@@ -140,6 +140,36 @@ func TestBindingIDMetadataSourceAliasCollision(t *testing.T) {
 	}
 }
 
+// A user service package named "application" must not clash with the always-
+// imported "github.com/wailsapp/wails/v3/pkg/application". buildPackageAliases
+// pre-reserves "application" so such a package gets a suffixed alias.
+func TestBindingIDMetadataSourceApplicationAlias(t *testing.T) {
+	regs := []bindingIDRegistration{
+		{
+			PackagePath: "example.com/app/application",
+			PackageName: "application",
+			TypeName:    "Service",
+			MethodName:  "Greet",
+			ID:          "42",
+		},
+	}
+
+	got, err := bindingIDMetadataSource("main", "", regs)
+	if err != nil {
+		t.Fatalf("bindingIDMetadataSource: %v", err)
+	}
+
+	source := string(got)
+	// The user package must NOT be aliased as "application" (that name is taken).
+	if strings.Contains(source, `application "example.com/app/application"`) {
+		t.Errorf("user service should not collide with the wails application import:\n%s", source)
+	}
+	// It should get a suffixed alias instead.
+	if !strings.Contains(source, `application2 "example.com/app/application"`) {
+		t.Errorf("user service should get a suffixed alias (application2):\n%s", source)
+	}
+}
+
 func TestBindingIDMetadataSourceEmpty(t *testing.T) {
 	_, err := bindingIDMetadataSource("main", "", nil)
 	if err == nil {

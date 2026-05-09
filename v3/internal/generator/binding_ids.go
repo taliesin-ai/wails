@@ -82,6 +82,12 @@ func (generator *Generator) resolveObfuscatedOutput() (dir, packageName string, 
 		}
 		dir = generator.mainPackageDir
 	} else {
+		// Normalise relative paths (e.g. ./cmd/app) so that downstream
+		// directory comparisons and resolveTargetPackageName work correctly
+		// regardless of the caller's working directory.
+		if abs, err := filepath.Abs(dir); err == nil {
+			dir = abs
+		}
 		// User-routed destination: registration runs only if the chosen
 		// package is reachable from main's import graph.
 		generator.logger.Infof(
@@ -235,7 +241,10 @@ func writeMetadataInit(buf *bytes.Buffer, registrations []bindingIDRegistration,
 // to without an import.
 func buildPackageAliases(registrations []bindingIDRegistration, selfPkgPath string) map[string]string {
 	aliases := make(map[string]string)
-	used := make(map[string]bool)
+	// "application" is always imported as the unaliased package name by
+	// writeMetadataImports; pre-reserve it so a user service package also
+	// named "application" gets an auto-suffixed alias (application2, etc.).
+	used := map[string]bool{"application": true}
 
 	seen := make(map[string]string)
 	var paths []string
