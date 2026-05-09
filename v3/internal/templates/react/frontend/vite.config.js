@@ -6,7 +6,7 @@ import wails from "@wailsio/runtime/plugins/vite";
 export default defineConfig({
   plugins: [react(), wails("./bindings")],
   server: {
-    port: parseInt(process.env.WAILS_VITE_PORT || "9245"),
+    port: parseInt(process.env.WAILS_VITE_PORT, 10) || 9245,
     strictPort: true,
   },
 });
