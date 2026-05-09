@@ -360,6 +360,18 @@ func TestMacLiquidGlassStyle_Constants(t *testing.T) {
 	}
 }
 
+func TestNSVisualEffectMaterial_Constants(t *testing.T) {
+	if NSVisualEffectMaterialAppearanceBased != 0 {
+		t.Error("NSVisualEffectMaterialAppearanceBased should be 0")
+	}
+	if NSVisualEffectMaterialLight != 1 {
+		t.Error("NSVisualEffectMaterialLight should be 1")
+	}
+	if NSVisualEffectMaterialAuto != -1 {
+		t.Error("NSVisualEffectMaterialAuto should be -1")
+	}
+}
+
 func TestEffectiveZoomButtonState(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -394,17 +406,5 @@ func TestEffectiveZoomButtonState(t *testing.T) {
 				t.Errorf("effectiveZoomButtonState(%v, %v) [reversed] = %v, want %v", tt.b, tt.a, got2, tt.expected)
 			}
 		})
-	}
-}
-
-func TestNSVisualEffectMaterial_Constants(t *testing.T) {
-	if NSVisualEffectMaterialAppearanceBased != 0 {
-		t.Error("NSVisualEffectMaterialAppearanceBased should be 0")
-	}
-	if NSVisualEffectMaterialLight != 1 {
-		t.Error("NSVisualEffectMaterialLight should be 1")
-	}
-	if NSVisualEffectMaterialAuto != -1 {
-		t.Error("NSVisualEffectMaterialAuto should be -1")
 	}
 }
