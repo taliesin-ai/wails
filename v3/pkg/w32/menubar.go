@@ -581,9 +581,11 @@ func MenuBarWndProc(hwnd HWND, msg uint32, wParam WPARAM, lParam LPARAM, theme *
 
 		// Snap-to-side produces SIZE_RESTORED, not SIZE_MAXIMIZED; include both so the
 		// dark menubar is repainted after every snap or maximize operation.
-		// Skip during live resize drag (WM_ENTERSIZEMOVE active) to avoid redundant redraws.
-		_, inSizeMove := sizeMovingWindows.Load(hwnd)
-		if msg == WM_SIZE && !inSizeMove && (wParam == SIZE_MAXIMIZED || wParam == SIZE_RESTORED) {
+		// Note: we cannot guard with sizeMovingWindows here because Win+Left keyboard snap
+		// also sets inSizeMove (WM_ENTERSIZEMOVE fires before the snap geometry lands).
+		// The async invalidation (no RDW_UPDATENOW) is cheap: Windows coalesces rapid
+		// resize events so this doesn't cause visible flicker during live drag.
+		if msg == WM_SIZE && (wParam == SIZE_MAXIMIZED || wParam == SIZE_RESTORED) {
 			// Invalidate the entire menubar area to force redraw
 			var mbi MENUBARINFO
 			mbi.CbSize = uint32(unsafe.Sizeof(mbi))

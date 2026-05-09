@@ -1618,8 +1618,10 @@ func (w *windowsWebviewWindow) WndProc(msg uint32, wparam, lparam uintptr) uintp
 			w.isMinimizing = false
 			w.parent.emit(events.Windows.WindowRestore)
 			// Snap-to-side sends SIZE_RESTORED; queue an async frame redraw so the dark
-			// menubar is not left invisible. Skip during live-resize drag to avoid flicker.
-			if !w.inSizeMove && w.menu != nil && w.menubarTheme != nil {
+			// menubar is not left invisible. Cannot guard with inSizeMove because Win+Left
+			// snap also sets inSizeMove (WM_ENTERSIZEMOVE fires before the snap geometry
+			// lands). The async RDW_INVALIDATE is coalesced by Windows during live resize.
+			if w.menu != nil && w.menubarTheme != nil {
 				w32.RedrawWindow(w.hwnd, nil, 0, w32.RDW_FRAME|w32.RDW_INVALIDATE)
 			}
 		case w32.SIZE_MINIMIZED:
