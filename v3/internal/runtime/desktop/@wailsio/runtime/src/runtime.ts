@@ -170,6 +170,11 @@ async function sendChunked(url: URL, headers: Record<string, string>, bodyStr: s
         if (!resp.ok) {
             throw new Error(await resp.text());
         }
+        const body = await resp.text();
+        if (body.trim()) {
+            console.warn('[Wails] Unexpected non-empty body from intermediate chunk:', body);
+            throw new Error(body);
+        }
     }
 
     return fetch(url, {

@@ -32,16 +32,22 @@ const (
 	chunkIndexHeader = "x-wails-chunk-index"
 	chunkTotalHeader = "x-wails-chunk-total"
 	chunkTTL         = 30 * time.Second
+
+	maxChunkTotal    = 10_000            // max slices per upload
+	maxChunkSize     = 512 * 1024        // max bytes per slice (matches JS CHUNK_THRESHOLD)
+	maxAggregateSize = 100 * 1024 * 1024 // max assembled payload (100 MB)
 )
 
 // pendingChunks accumulates request body chunks sent by the JS runtime
 // to work around WebView2's ~2MB limit on request body content delivery
 // via the WebResourceRequested event.
 type pendingChunks struct {
-	mu        sync.Mutex
-	chunks    map[int][]byte
-	total     int
-	createdAt time.Time
+	mu            sync.Mutex
+	chunks        map[int][]byte
+	total         int
+	aggregateSize int
+	lastActivity  time.Time
+	completed     bool
 }
 
 type HTTPTransport struct {
@@ -49,6 +55,7 @@ type HTTPTransport struct {
 	logger           *slog.Logger
 	chunkStore       sync.Map
 	stopCleanup      chan struct{}
+	stopOnce         sync.Once
 }
 
 func NewHTTPTransport(opts ...HTTPTransportOption) *HTTPTransport {
@@ -93,9 +100,9 @@ func (t *HTTPTransport) cleanupChunks() {
 			t.chunkStore.Range(func(k, v any) bool {
 				pc := v.(*pendingChunks)
 				pc.mu.Lock()
-				expired := now.Sub(pc.createdAt) > chunkTTL
+				idle := now.Sub(pc.lastActivity) > chunkTTL
 				pc.mu.Unlock()
-				if expired {
+				if idle {
 					t.chunkStore.Delete(k)
 				}
 				return true
@@ -109,10 +116,11 @@ func (t *HTTPTransport) JSClient() []byte {
 }
 
 func (t *HTTPTransport) Stop() error {
-	if t.stopCleanup != nil {
-		close(t.stopCleanup)
-		t.stopCleanup = nil
-	}
+	t.stopOnce.Do(func() {
+		if t.stopCleanup != nil {
+			close(t.stopCleanup)
+		}
+	})
 	return nil
 }
 
@@ -176,6 +184,14 @@ func (t *HTTPTransport) handleChunkedRequest(rw http.ResponseWriter, r *http.Req
 		t.httpError(rw, errs.NewInvalidRuntimeCallErrorf("invalid chunk total: %s", totalStr))
 		return
 	}
+	if index >= total {
+		t.httpError(rw, errs.NewInvalidRuntimeCallErrorf("chunk index %d out of range (total %d)", index, total))
+		return
+	}
+	if total > maxChunkTotal {
+		t.httpError(rw, errs.NewInvalidRuntimeCallErrorf("chunk total %d exceeds maximum %d", total, maxChunkTotal))
+		return
+	}
 
 	buf := bufferPool.Get().(*bytes.Buffer)
 	buf.Reset()
@@ -189,19 +205,35 @@ func (t *HTTPTransport) handleChunkedRequest(rw http.ResponseWriter, r *http.Req
 		t.httpError(rw, errs.WrapInvalidRuntimeCallErrorf(err, "unable to read chunk body"))
 		return
 	}
+	if buf.Len() > maxChunkSize {
+		t.httpError(rw, errs.NewInvalidRuntimeCallErrorf("chunk body %d bytes exceeds maximum %d", buf.Len(), maxChunkSize))
+		return
+	}
 
 	chunk := make([]byte, buf.Len())
 	copy(chunk, buf.Bytes())
 
 	actual, _ := t.chunkStore.LoadOrStore(chunkID, &pendingChunks{
-		chunks:    make(map[int][]byte),
-		total:     total,
-		createdAt: time.Now(),
+		chunks:       make(map[int][]byte),
+		total:        total,
+		lastActivity: time.Now(),
 	})
 	pc := actual.(*pendingChunks)
 
 	pc.mu.Lock()
+	if pc.total != total {
+		pc.mu.Unlock()
+		t.httpError(rw, errs.NewInvalidRuntimeCallErrorf("chunk total mismatch: got %d, expected %d", total, pc.total))
+		return
+	}
+	if pc.aggregateSize+len(chunk) > maxAggregateSize {
+		pc.mu.Unlock()
+		t.httpError(rw, errs.NewInvalidRuntimeCallErrorf("aggregate payload would exceed maximum %d bytes", maxAggregateSize))
+		return
+	}
+	pc.aggregateSize += len(chunk)
 	pc.chunks[index] = chunk
+	pc.lastActivity = time.Now()
 	received := len(pc.chunks)
 	pc.mu.Unlock()
 
@@ -210,16 +242,22 @@ func (t *HTTPTransport) handleChunkedRequest(rw http.ResponseWriter, r *http.Req
 		return
 	}
 
-	// All chunks received — assemble in order and process.
-	t.chunkStore.Delete(chunkID)
-
+	// All chunks received — use completed flag to prevent a concurrent retry
+	// of the final chunk from calling processBody a second time on the same ResponseWriter.
 	pc.mu.Lock()
-	var assembled []byte
+	if pc.completed {
+		pc.mu.Unlock()
+		rw.WriteHeader(http.StatusOK)
+		return
+	}
+	pc.completed = true
+	assembled := make([]byte, 0, pc.aggregateSize)
 	for i := 0; i < pc.total; i++ {
 		assembled = append(assembled, pc.chunks[i]...)
 	}
 	pc.mu.Unlock()
 
+	t.chunkStore.Delete(chunkID)
 	t.processBody(rw, r, assembled)
 }
 
