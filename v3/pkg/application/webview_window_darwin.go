@@ -1388,8 +1388,8 @@ func (w *macosWebviewWindow) run() {
 
 		// Initialise the window buttons
 		w.setMinimiseButtonState(options.MinimiseButtonState)
-		w.setCloseButtonState(options.CloseButtonState)
 		w.setMaximiseButtonState(options.MaximiseButtonState)
+		w.setCloseButtonState(options.CloseButtonState)
 
 		// Ignore mouse events if requested
 		w.setIgnoreMouseEvents(options.IgnoreMouseEvents)
@@ -1616,6 +1616,10 @@ func (w *macosWebviewWindow) setMinimiseButtonState(state ButtonState) {
 }
 
 func (w *macosWebviewWindow) setMaximiseButtonState(state ButtonState) {
+	// On macOS, MaximiseButtonState and FullscreenButtonState share NSWindowZoomButton.
+	// Always apply the more restrictive of the two stored states so that runtime calls
+	// to SetMaximiseButtonState cannot override a FullscreenButtonState restriction, and
+	// vice versa.
 	C.setMaximiseButtonState(w.nsWindow, C.int(effectiveZoomButtonState(state, w.parent.options.FullscreenButtonState)))
 }
 
@@ -1624,8 +1628,9 @@ func (w *macosWebviewWindow) setCloseButtonState(state ButtonState) {
 }
 
 func (w *macosWebviewWindow) setFullscreenButtonState(state ButtonState) {
-	// On macOS the fullscreen/zoom button is NSWindowZoomButton, the same physical control
-	// as the maximise button. Apply the more restrictive of the two states.
+	// On macOS, MaximiseButtonState and FullscreenButtonState share NSWindowZoomButton.
+	// Always apply the more restrictive of the two stored states so that runtime calls
+	// to SetFullscreenButtonState cannot override a MaximiseButtonState restriction.
 	C.setMaximiseButtonState(w.nsWindow, C.int(effectiveZoomButtonState(state, w.parent.options.MaximiseButtonState)))
 }
 

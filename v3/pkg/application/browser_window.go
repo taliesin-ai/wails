@@ -97,9 +97,10 @@ func (b *BrowserWindow) SetAlwaysOnTop(b2 bool) Window                { return b
 func (b *BrowserWindow) SetBackgroundColour(colour RGBA) Window       { return b }
 func (b *BrowserWindow) SetFrameless(frameless bool) Window           { return b }
 func (b *BrowserWindow) SetHTML(html string) Window                   { return b }
-func (b *BrowserWindow) SetMinimiseButtonState(state ButtonState) Window { return b }
-func (b *BrowserWindow) SetMaximiseButtonState(state ButtonState) Window { return b }
-func (b *BrowserWindow) SetCloseButtonState(state ButtonState) Window { return b }
+func (b *BrowserWindow) SetMinimiseButtonState(state ButtonState) Window    { return b }
+func (b *BrowserWindow) SetMaximiseButtonState(state ButtonState) Window    { return b }
+func (b *BrowserWindow) SetCloseButtonState(state ButtonState) Window       { return b }
+func (b *BrowserWindow) SetFullscreenButtonState(state ButtonState) Window  { return b }
 func (b *BrowserWindow) SetMaxSize(maxWidth, maxHeight int) Window    { return b }
 func (b *BrowserWindow) SetMinSize(minWidth, minHeight int) Window    { return b }
 func (b *BrowserWindow) SetRelativePosition(x, y int) Window          { return b }

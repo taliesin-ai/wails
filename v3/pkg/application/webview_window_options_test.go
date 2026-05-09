@@ -366,6 +366,7 @@ func TestEffectiveZoomButtonState(t *testing.T) {
 		a, b     ButtonState
 		expected ButtonState
 	}{
+		// More restrictive always wins
 		{"both enabled", ButtonEnabled, ButtonEnabled, ButtonEnabled},
 		{"a disabled, b enabled", ButtonDisabled, ButtonEnabled, ButtonDisabled},
 		{"a enabled, b disabled", ButtonEnabled, ButtonDisabled, ButtonDisabled},
@@ -375,6 +376,7 @@ func TestEffectiveZoomButtonState(t *testing.T) {
 		{"a disabled, b hidden", ButtonDisabled, ButtonHidden, ButtonHidden},
 		{"both disabled", ButtonDisabled, ButtonDisabled, ButtonDisabled},
 		{"both hidden", ButtonHidden, ButtonHidden, ButtonHidden},
+		// Default (ButtonEnabled=0) does not override an explicit restriction
 		{"maximise disabled, fullscreen default", ButtonDisabled, ButtonEnabled, ButtonDisabled},
 		{"maximise default, fullscreen disabled", ButtonEnabled, ButtonDisabled, ButtonDisabled},
 		{"maximise hidden, fullscreen default", ButtonHidden, ButtonEnabled, ButtonHidden},
@@ -385,6 +387,11 @@ func TestEffectiveZoomButtonState(t *testing.T) {
 			got := effectiveZoomButtonState(tt.a, tt.b)
 			if got != tt.expected {
 				t.Errorf("effectiveZoomButtonState(%v, %v) = %v, want %v", tt.a, tt.b, got, tt.expected)
+			}
+			// Must be commutative: order of arguments must not matter
+			got2 := effectiveZoomButtonState(tt.b, tt.a)
+			if got2 != tt.expected {
+				t.Errorf("effectiveZoomButtonState(%v, %v) [reversed] = %v, want %v", tt.b, tt.a, got2, tt.expected)
 			}
 		})
 	}
