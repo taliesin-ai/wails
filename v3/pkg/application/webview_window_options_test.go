@@ -360,6 +360,36 @@ func TestMacLiquidGlassStyle_Constants(t *testing.T) {
 	}
 }
 
+func TestEffectiveZoomButtonState(t *testing.T) {
+	tests := []struct {
+		name     string
+		a, b     ButtonState
+		expected ButtonState
+	}{
+		{"both enabled", ButtonEnabled, ButtonEnabled, ButtonEnabled},
+		{"a disabled, b enabled", ButtonDisabled, ButtonEnabled, ButtonDisabled},
+		{"a enabled, b disabled", ButtonEnabled, ButtonDisabled, ButtonDisabled},
+		{"a hidden, b enabled", ButtonHidden, ButtonEnabled, ButtonHidden},
+		{"a enabled, b hidden", ButtonEnabled, ButtonHidden, ButtonHidden},
+		{"a hidden, b disabled", ButtonHidden, ButtonDisabled, ButtonHidden},
+		{"a disabled, b hidden", ButtonDisabled, ButtonHidden, ButtonHidden},
+		{"both disabled", ButtonDisabled, ButtonDisabled, ButtonDisabled},
+		{"both hidden", ButtonHidden, ButtonHidden, ButtonHidden},
+		{"maximise disabled, fullscreen default", ButtonDisabled, ButtonEnabled, ButtonDisabled},
+		{"maximise default, fullscreen disabled", ButtonEnabled, ButtonDisabled, ButtonDisabled},
+		{"maximise hidden, fullscreen default", ButtonHidden, ButtonEnabled, ButtonHidden},
+		{"maximise default, fullscreen hidden", ButtonEnabled, ButtonHidden, ButtonHidden},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := effectiveZoomButtonState(tt.a, tt.b)
+			if got != tt.expected {
+				t.Errorf("effectiveZoomButtonState(%v, %v) = %v, want %v", tt.a, tt.b, got, tt.expected)
+			}
+		})
+	}
+}
+
 func TestNSVisualEffectMaterial_Constants(t *testing.T) {
 	if NSVisualEffectMaterialAppearanceBased != 0 {
 		t.Error("NSVisualEffectMaterialAppearanceBased should be 0")

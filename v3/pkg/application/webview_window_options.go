@@ -22,6 +22,15 @@ const (
 	ButtonHidden   ButtonState = 2
 )
 
+// effectiveZoomButtonState returns the more restrictive of two ButtonState values.
+// Hidden > Disabled > Enabled, matching the iota ordering.
+func effectiveZoomButtonState(a, b ButtonState) ButtonState {
+	if b > a {
+		return b
+	}
+	return a
+}
+
 type WindowStartPosition int
 
 const (
