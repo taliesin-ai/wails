@@ -3,6 +3,7 @@ package notifications
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -142,8 +143,12 @@ func TestValidateNotificationOptions_Attachments(t *testing.T) {
 	// macOS UNNotificationAttachment accepts file:// URLs, and the package
 	// godoc on NotificationAttachment.Path documents them. The validator
 	// must not reject the URL form by trying to os.Stat it as a literal
-	// path.
+	// path. On Windows "file://" + filepath.Join(...) produces an invalid
+	// URI ("file://C:\..."), so this subtest is macOS-only.
 	t.Run("file:// URL passes", func(t *testing.T) {
+		if runtime.GOOS != "darwin" {
+			t.Skip("file:// URL attachment paths are macOS-only")
+		}
 		opts := NotificationOptions{
 			ID:    "n",
 			Title: "t",

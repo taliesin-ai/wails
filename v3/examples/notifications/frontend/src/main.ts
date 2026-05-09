@@ -70,6 +70,14 @@ async function update(notif: Notif): Promise<void> {
     await NotificationService.UpdateNotification(notif as any);
 }
 
+function encodeHTML(s: unknown): string {
+    return String(s)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+}
+
 function status(message: string): void {
     if (statusEl) statusEl.innerHTML = `<p>${message}</p>`;
     console.info(message);
@@ -320,10 +328,10 @@ const unlisten = Events.On("notification:action", (response) => {
 
     const baseRows = `
         <thead>
-            ${Object.keys(base).map((key) => `<th>${key}</th>`).join("")}
+            ${Object.keys(base).map((key) => `<th>${encodeHTML(key)}</th>`).join("")}
         </thead>
         <tbody>
-            ${Object.values(base).map((value) => `<td>${value}</td>`).join("")}
+            ${Object.values(base).map((value) => `<td>${encodeHTML(value)}</td>`).join("")}
         </tbody>
     `;
     const metaRows = userInfo
@@ -331,10 +339,10 @@ const unlisten = Events.On("notification:action", (response) => {
         <h5>Notification Metadata</h5>
         <table>
             <thead>
-                ${Object.keys(userInfo).map((key) => `<th>${key}</th>`).join("")}
+                ${Object.keys(userInfo).map((key) => `<th>${encodeHTML(key)}</th>`).join("")}
             </thead>
             <tbody>
-                ${Object.values(userInfo).map((value) => `<td>${value}</td>`).join("")}
+                ${Object.values(userInfo).map((value) => `<td>${encodeHTML(value)}</td>`).join("")}
             </tbody>
         </table>
     `
