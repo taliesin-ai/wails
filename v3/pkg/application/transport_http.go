@@ -49,6 +49,8 @@ type HTTPTransport struct {
 	logger           *slog.Logger
 	chunkStore       sync.Map
 	stopCleanup      chan struct{}
+	// processBodyFn is a test hook: when non-nil it replaces the real processBody logic.
+	processBodyFn func(rw http.ResponseWriter, r *http.Request, body []byte)
 }
 
 func NewHTTPTransport(opts ...HTTPTransportOption) *HTTPTransport {
@@ -89,19 +91,25 @@ func (t *HTTPTransport) cleanupChunks() {
 		case <-t.stopCleanup:
 			return
 		case <-ticker.C:
-			now := time.Now()
-			t.chunkStore.Range(func(k, v any) bool {
-				pc := v.(*pendingChunks)
-				pc.mu.Lock()
-				expired := now.Sub(pc.createdAt) > chunkTTL
-				pc.mu.Unlock()
-				if expired {
-					t.chunkStore.Delete(k)
-				}
-				return true
-			})
+			t.sweepExpired()
 		}
 	}
+}
+
+// sweepExpired evicts chunk accumulators older than chunkTTL.
+// Extracted from cleanupChunks so tests can call it directly without sleeping.
+func (t *HTTPTransport) sweepExpired() {
+	now := time.Now()
+	t.chunkStore.Range(func(k, v any) bool {
+		pc := v.(*pendingChunks)
+		pc.mu.Lock()
+		expired := now.Sub(pc.createdAt) > chunkTTL
+		pc.mu.Unlock()
+		if expired {
+			t.chunkStore.Delete(k)
+		}
+		return true
+	})
 }
 
 func (t *HTTPTransport) JSClient() []byte {
@@ -224,6 +232,10 @@ func (t *HTTPTransport) handleChunkedRequest(rw http.ResponseWriter, r *http.Req
 }
 
 func (t *HTTPTransport) processBody(rw http.ResponseWriter, r *http.Request, bodyBytes []byte) {
+	if t.processBodyFn != nil {
+		t.processBodyFn(rw, r, bodyBytes)
+		return
+	}
 	var body request
 	var err error
 
