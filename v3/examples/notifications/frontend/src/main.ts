@@ -4,6 +4,15 @@ import {
 } from "../bindings/github.com/wailsapp/wails/v3/pkg/services/notifications";
 import * as DemoAssetsService from "../bindings/notifications/demoassets";
 
+function escapeHtml(s: unknown): string {
+    return String(s)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+}
+
 // Inline the option type so we don't have to fight tsconfig path resolution
 // for the generated d.ts files; the generated bindings already accept this
 // shape via $models.NotificationOptions.
@@ -320,10 +329,10 @@ const unlisten = Events.On("notification:action", (response) => {
 
     const baseRows = `
         <thead>
-            ${Object.keys(base).map((key) => `<th>${key}</th>`).join("")}
+            ${Object.keys(base).map((key) => `<th>${escapeHtml(key)}</th>`).join("")}
         </thead>
         <tbody>
-            ${Object.values(base).map((value) => `<td>${value}</td>`).join("")}
+            ${Object.values(base).map((value) => `<td>${escapeHtml(value)}</td>`).join("")}
         </tbody>
     `;
     const metaRows = userInfo
@@ -331,10 +340,10 @@ const unlisten = Events.On("notification:action", (response) => {
         <h5>Notification Metadata</h5>
         <table>
             <thead>
-                ${Object.keys(userInfo).map((key) => `<th>${key}</th>`).join("")}
+                ${Object.keys(userInfo).map((key) => `<th>${escapeHtml(key)}</th>`).join("")}
             </thead>
             <tbody>
-                ${Object.values(userInfo).map((value) => `<td>${value}</td>`).join("")}
+                ${Object.values(userInfo).map((value) => `<td>${escapeHtml(value)}</td>`).join("")}
             </tbody>
         </table>
     `
