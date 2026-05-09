@@ -278,6 +278,13 @@ func MenuBarWndProc(hwnd HWND, msg uint32, wParam WPARAM, lParam LPARAM, theme *
 		return false, 0
 	case WM_EXITSIZEMOVE:
 		sizeMovingWindows.Delete(hwnd)
+		// Repaint after snap or keyboard-resize completion (Win+Left, Win+Up, etc.)
+		var mbi MENUBARINFO
+		mbi.CbSize = uint32(unsafe.Sizeof(mbi))
+		if GetMenuBarInfo(hwnd, OBJID_MENU, 0, &mbi) {
+			InvalidateRect(hwnd, &mbi.Bar, true)
+			DrawMenuBar(hwnd)
+		}
 		return false, 0
 	case WM_UAHDRAWMENU:
 		udm := (*UAHMENU)(unsafe.Pointer(lParam))

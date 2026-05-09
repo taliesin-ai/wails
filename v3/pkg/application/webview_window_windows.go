@@ -1529,6 +1529,11 @@ func (w *windowsWebviewWindow) WndProc(msg uint32, wparam, lparam uintptr) uintp
 		}
 	case w32.WM_EXITSIZEMOVE:
 		w.inSizeMove = false
+		// Repaint menubar after snap or keyboard-resize (Win+Left, Win+Up, etc.)
+		// SIZE_RESTORED was suppressed during inSizeMove; this is the definitive end of the operation.
+		if w.menu != nil && w.menubarTheme != nil {
+			w32.RedrawWindow(w.hwnd, nil, 0, w32.RDW_FRAME|w32.RDW_INVALIDATE|w32.RDW_UPDATENOW)
+		}
 		if int(w32.GetKeyState(w32.VK_LBUTTON))&0x8000 != 0 {
 			w.parent.emit(events.Windows.WindowEndMove)
 		} else {
