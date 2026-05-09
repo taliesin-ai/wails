@@ -128,9 +128,12 @@ async function runtimeCallWithID(objectID: number, method: number, windowName: s
     }
 
     const bodyStr = JSON.stringify(body);
+    // Encode to bytes before comparing: CHUNK_THRESHOLD is a byte limit and
+    // string.length counts UTF-16 code units, not UTF-8 bytes.
+    const bodyBytes = new TextEncoder().encode(bodyStr);
     let response: Response;
-    if (bodyStr.length > CHUNK_THRESHOLD) {
-        response = await sendChunked(url, headers, bodyStr);
+    if (bodyBytes.length > CHUNK_THRESHOLD) {
+        response = await sendChunked(url, headers, bodyBytes);
     } else {
         response = await fetch(url, { method: 'POST', headers, body: bodyStr });
     }
@@ -145,14 +148,12 @@ async function runtimeCallWithID(objectID: number, method: number, windowName: s
     }
 }
 
-// sendChunked splits a large serialised request body into CHUNK_THRESHOLD-sized
-// byte chunks and sends them serially.  Encoding to UTF-8 bytes before slicing
-// prevents corruption of non-BMP characters (surrogate pairs) that would occur
-// when splitting at JavaScript string indices.  The Go transport assembles the
-// raw bytes before processing.  Only the final chunk's response carries the RPC result.
-async function sendChunked(url: URL, headers: Record<string, string>, bodyStr: string): Promise<Response> {
+// sendChunked splits a UTF-8 byte buffer into CHUNK_THRESHOLD-sized slices and
+// sends them serially.  The caller is responsible for encoding (TextEncoder) so
+// that byte-level slicing never splits a surrogate pair.  Only the final chunk's
+// response carries the RPC result.
+async function sendChunked(url: URL, headers: Record<string, string>, bodyBytes: Uint8Array): Promise<Response> {
     const chunkId = nanoid();
-    const bodyBytes = new TextEncoder().encode(bodyStr);
     const totalChunks = Math.ceil(bodyBytes.length / CHUNK_THRESHOLD);
 
     for (let i = 0; i < totalChunks - 1; i++) {
