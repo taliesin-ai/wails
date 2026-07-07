@@ -213,6 +213,50 @@ func TestProcessData(t *testing.T) {
 
 ## Documentation
 
+### Translate Docs
+
+Use `wails3 translate` when you want to add a new locale or bring an existing
+translation up to date. The command opens a local workbench that shows every
+locale's freshness, lets you edit files side by side with the English source,
+and records the cache metadata reviewers need to know what source text was
+accepted.
+
+```bash
+# Build or install a current wails3, then run from a Wails checkout
+wails3 translate --dir docs
+
+# Focus one locale
+wails3 translate --dir docs --locale de
+
+# See what needs work before opening the UI
+wails3 translate --dir docs --status --all
+wails3 translate --dir docs --list-stale --all
+```
+
+Recommended translation workflow:
+
+1. Fork and clone `wailsapp/wails`, then build or install a current `wails3`.
+2. Run `wails3 translate --dir docs --locale <code>`.
+3. Translate missing files and update stale files. For stale files with a saved
+   snapshot, use **Source changes** to see exactly what changed in English.
+4. Save each file after review. Saving records the current English hash in
+   `docs/.translation-cache/<locale>.json`.
+5. Run the docs build from `docs/` before opening your pull request.
+6. Commit the translated MDX files and the matching
+   `docs/.translation-cache/<locale>.json` changes. If source snapshots under
+   `docs/.translation-cache/.snapshots/` were written, commit them too.
+
+Do not commit `docs/.translation-cache/.review/`; it is your local review
+progress. If you translated a file outside the workbench, accept it explicitly:
+
+```bash
+wails3 translate --dir docs --record --locale <code> --file quick-start/why-wails.mdx
+```
+
+`--file` must be the English source path relative to `docs/src/content/docs/`.
+This keeps cache updates tied to one reviewed source file and prevents accidental
+writes outside the docs tree.
+
 ### Writing Docs
 
 Documentation uses Starlight (Astro):
