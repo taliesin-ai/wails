@@ -33,6 +33,7 @@ func main() {
 	app := clir.NewCli("wails", "The Wails3 CLI", "v3")
 	app.NewSubCommand("docs", "Open the docs").Action(openDocs)
 	app.NewSubCommandFunction("init", "Initialise a new project", commands.Init)
+	app.NewSubCommandFunction("translate", "Open the documentation translation workbench", commands.Translate)
 
 	build := app.NewSubCommand("build", "Build the project")
 	var buildFlags flags.Build
