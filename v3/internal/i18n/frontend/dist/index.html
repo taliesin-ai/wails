@@ -1,0 +1,710 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Wails Translate</title>
+<link rel="icon" href="/favicon.svg" />
+<style>
+:root{
+  --wails-red:#ef4444; --wails-red-dark:#dc2626; --wails-red-light:#f87171;
+  --bg-primary:#05070b; --bg-secondary:#0a0e16; --bg-tertiary:#0f1420;
+  --glass-border:rgba(255,255,255,0.08);
+  --text:#fff; --text-dim:#cdd3dc; --text-faint:#939cab;
+  --grad:linear-gradient(135deg,#ff5a4d 0%,#ff2d72 100%);
+  /* Calm, cohesive status palette: one positive green, a muted gold, a neutral
+     grey for "not started" (no clashing bright blue), and a brand-aligned rose. */
+  --ok:#3fb950; --stale:#caa13a; --missing:#7d8794; --orphan:#d06b8c; --err:#e06b6b;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;height:100%;background:#0b0d12;color:var(--text);
+  font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI','Roboto','Oxygen','Ubuntu','Cantarell',sans-serif;
+  -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;font-size:14px}
+/* viewport scroller + fixed mountain backdrop (matches setup wizard) */
+.viewport{position:fixed;inset:0;overflow:auto;background:#0b0d12}
+.backdrop{position:fixed;inset:0;pointer-events:none;opacity:0.42;
+  background:url('/digital_wales_master.webp') center/cover no-repeat}
+.center{position:relative;min-height:100%;display:flex;align-items:center;justify-content:center;padding:8px}
+/* the window card */
+.window{position:relative;z-index:10;display:flex;overflow:hidden;border-radius:18px;
+  border:1px solid var(--glass-border);
+  box-shadow:0 70px 160px rgba(0,0,0,0.8),0 30px 70px rgba(0,0,0,0.6),0 0 0 1px rgba(0,0,0,0.3);
+  width:min(100vw - 1rem,108rem);height:min(100vh - 1rem,70rem)}
+/* sidebar */
+.side{width:15rem;flex-shrink:0;display:flex;flex-direction:column;
+  background:rgba(10,14,22,0.40);backdrop-filter:blur(50px) saturate(1.8);-webkit-backdrop-filter:blur(50px) saturate(1.8);
+  border-right:1px solid rgba(255,255,255,0.10)}
+.side .brand{padding:26px 14px 12px;display:flex;justify-content:center}
+.side .brand img{height:81px;max-width:96%;object-fit:contain;filter:drop-shadow(0 0 55px rgba(239,68,68,0.45))}
+.side .product{text-align:center;font-size:16px;letter-spacing:.22em;text-transform:uppercase;color:var(--text-faint);margin-bottom:16px}
+.side nav{flex:1;padding:8px 12px;overflow:auto}
+.navlabel{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--text-faint);padding:14px 10px 6px}
+.navitem{display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:10px;cursor:pointer;color:var(--text-dim);transition:.12s}
+.navitem:hover{background:rgba(255,255,255,0.06);color:#fff}
+.navitem.active{background:rgba(255,255,255,0.10);color:#fff}
+.navitem .ic{width:17px;height:17px;flex-shrink:0;opacity:.9}
+.navitem .lbl{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;font-size:13px}
+.navitem .mini{font-size:10px;color:var(--text-faint)}
+.navitem.noicon{padding-left:12px}
+.navitem.noicon .lbl{font-weight:500}
+.side .foot{padding:12px;border-top:1px solid rgba(255,255,255,0.08);display:flex;align-items:center;gap:8px}
+.side .foot svg{width:15px;height:15px;color:var(--text-dim)}
+/* content panel */
+.content{flex:1;min-width:0;display:flex;flex-direction:column;
+  background:rgba(10,14,22,0.62);backdrop-filter:blur(30px) saturate(1.4);-webkit-backdrop-filter:blur(30px) saturate(1.4)}
+.chead{display:flex;align-items:center;gap:12px;padding:20px 26px 14px}
+.chead h1{font-size:20px;margin:0;font-weight:700}
+.chead .spacer{flex:1}
+.cbody{flex:1;min-height:0;overflow:auto;padding:6px 26px 20px}
+/* status bar */
+.statusbar{display:flex;align-items:center;gap:14px;padding:8px 26px;font-size:11.5px;color:var(--text-dim);
+  border-top:1px solid rgba(255,255,255,0.08);background:rgba(0,0,0,0.18)}
+.statusbar .dot{width:7px;height:7px;border-radius:50%;background:var(--ok);box-shadow:0 0 8px var(--ok)}
+.statusbar .spacer{flex:1}
+.statusbar code{color:var(--text);font-family:ui-monospace,monospace}
+/* buttons */
+.btn{appearance:none;border:1px solid rgba(255,255,255,0.14);background:rgba(255,255,255,0.04);color:var(--text);
+  padding:8px 14px;border-radius:11px;cursor:pointer;font-size:13px;font-weight:600;transition:.18s;white-space:nowrap}
+.btn:hover{border-color:rgba(255,255,255,0.28);background:rgba(255,255,255,0.09)}
+.btn.primary{background:linear-gradient(to right,#ef4444,#dc2626);border:none;color:#fff;box-shadow:0 8px 22px rgba(239,68,68,0.28)}
+.btn.primary:hover{transform:scale(1.03);box-shadow:0 10px 28px rgba(239,68,68,0.4)}
+.btn.sm{padding:5px 10px;font-size:12px;border-radius:9px}
+.btn.icon{padding:7px;border-radius:9px;display:inline-flex}
+.btn.icon svg{width:16px;height:16px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+select,input,textarea{background:var(--bg-tertiary);color:var(--text);border:1px solid var(--glass-border);
+  border-radius:10px;padding:8px 10px;font-size:13px;font-family:inherit}
+select:focus,input:focus,textarea:focus{outline:2px solid var(--wails-red);outline-offset:-1px;border-color:transparent}
+.muted{color:var(--text-dim)} .gradient-text{background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+/* table */
+.toolbar{display:flex;align-items:center;gap:10px;margin:8px 0 14px}
+table.locales{width:100%;border-collapse:separate;border-spacing:0}
+table.locales th{text-align:left;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-faint);
+  font-weight:700;padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.08)}
+table.locales td{padding:11px 12px;border-bottom:1px solid rgba(255,255,255,0.05);vertical-align:middle}
+table.locales tr:hover td{background:rgba(255,255,255,0.03)}
+table.locales th.num,table.locales td.num{text-align:right;font-variant-numeric:tabular-nums}
+.lang .name{font-weight:700;font-size:14px} .lang .code{font-size:11px;color:var(--text-faint)}
+.bar{display:flex;height:7px;width:120px;border-radius:6px;overflow:hidden;background:rgba(255,255,255,0.07)}
+.bar>span{display:block;height:100%}
+.dot-ok{background:var(--ok)} .dot-stale{background:var(--stale)} .dot-missing{background:var(--missing)} .dot-orphan{background:var(--orphan)}
+.num.ok{color:var(--ok)} .num.stale{color:var(--stale)} .num.missing{color:var(--missing)} .num.orphan{color:var(--orphan)}
+.pctcell{display:flex;align-items:center;gap:10px}.pctcell b{font-size:13px}
+.kebab{cursor:pointer;color:var(--text-dim);padding:6px;border-radius:8px;display:inline-flex}
+.kebab:hover{background:rgba(255,255,255,0.08);color:#fff}
+/* popover menu */
+.menu{position:fixed;z-index:60;min-width:200px;padding:6px;border-radius:12px;
+  background:rgba(15,20,32,0.97);border:1px solid var(--glass-border);box-shadow:0 24px 60px rgba(0,0,0,0.6);backdrop-filter:blur(12px)}
+.menu button{display:block;width:100%;text-align:left;background:none;border:none;color:var(--text);padding:8px 10px;border-radius:8px;cursor:pointer;font-size:13px}
+.menu button:hover{background:rgba(255,255,255,0.08)}
+.menu .sep{height:1px;background:rgba(255,255,255,0.08);margin:4px 0}
+.banner{padding:11px 14px;margin:0 0 14px;border-radius:12px;border:1px solid rgba(202,161,58,0.28);background:rgba(202,161,58,0.08);font-size:13px}
+/* multi-segment freshness bar with per-segment hover tooltips */
+.fbar{position:relative;display:flex;width:190px;height:11px;border-radius:999px;
+  background:rgba(255,255,255,0.05);box-shadow:inset 0 0 0 1px rgba(255,255,255,0.06)}
+.fbar .seg{height:100%;position:relative;transition:width .6s cubic-bezier(.4,0,.2,1);cursor:default}
+.fbar .seg:first-child{border-radius:999px 0 0 999px}
+.fbar .seg:last-child{border-radius:0 999px 999px 0}
+.fbar .seg:only-child{border-radius:999px}
+.fbar .seg.s-ok{background:linear-gradient(180deg,#56d36a,#3fb950)}
+.fbar .seg.s-stale{background:linear-gradient(180deg,#e0b24a,#caa13a)}
+.fbar .seg.s-missing{background:rgba(125,135,148,0.28)}
+.fbar .seg+.seg{box-shadow:-1px 0 0 rgba(7,9,13,0.55)}
+.fbar .seg:hover{filter:brightness(1.12)}
+.fbar .seg[data-tip]:hover::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);
+  background:rgba(15,20,32,0.98);border:1px solid var(--glass-border);color:#fff;font-size:11px;font-weight:600;
+  padding:5px 9px;border-radius:8px;white-space:nowrap;box-shadow:0 12px 32px rgba(0,0,0,.55);z-index:40;pointer-events:none}
+.fbar .seg[data-tip]:hover::before{content:"";position:absolute;bottom:calc(100% + 3px);left:50%;transform:translateX(-50%);
+  border:5px solid transparent;border-top-color:rgba(15,20,32,0.98);z-index:40}
+/* splash */
+.splash{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px}
+.splash img{height:150px;object-fit:contain;filter:drop-shadow(0 0 70px rgba(239,68,68,0.45));margin-bottom:8px;animation:floatIn .6s ease-out}
+.splash h2{font-size:30px;margin:20px 0 12px;font-weight:700}
+.splash p{max-width:560px;color:var(--text-dim);line-height:1.7;font-size:16px;margin:0 0 16px}
+.splash .feats{display:flex;gap:22px;margin:8px 0 28px;flex-wrap:wrap;justify-content:center;color:var(--text-faint);font-size:13.5px}
+.splash .feats span{display:inline-flex;align-items:center;gap:7px}
+.splash .feats i{width:7px;height:7px;border-radius:50%}
+@keyframes floatIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+/* workspace */
+.ws{display:grid;grid-template-columns:280px 1fr;gap:16px;height:100%}
+.tree{border:1px solid var(--glass-border);border-radius:14px;padding:10px;overflow:auto;background:rgba(0,0,0,0.15)}
+.tree .filter{display:flex;gap:6px;margin-bottom:10px}
+.fnode{display:flex;align-items:center;gap:7px;padding:6px 8px;border-radius:8px;cursor:pointer;font-size:12.5px}
+.fnode:hover{background:rgba(255,255,255,0.05)} .fnode.active{background:rgba(239,68,68,0.16)}
+.fnode .path{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.badge{font-size:9px;padding:2px 6px;border-radius:20px;font-weight:700;text-transform:uppercase;letter-spacing:.03em}
+.b-up_to_date{background:rgba(63,185,80,.16);color:var(--ok)}
+.b-stale{background:rgba(202,161,58,.16);color:var(--stale)}
+.b-missing{background:rgba(125,135,148,.18);color:var(--missing)}
+.b-orphaned{background:rgba(208,107,140,.16);color:var(--orphan)}
+.editor{border:1px solid var(--glass-border);border-radius:14px;display:flex;flex-direction:column;padding:14px;overflow:hidden;background:rgba(0,0,0,0.15)}
+.ehead{display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+.ehead .spacer{flex:1}
+.panes{display:grid;grid-template-columns:1fr 1fr;gap:12px;flex:1;overflow:hidden}
+.pane{display:flex;flex-direction:column;overflow:hidden}
+.pane label{font-size:11px;color:var(--text-dim);margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em}
+.pane textarea,.pane pre{flex:1;width:100%;resize:none;overflow:auto;line-height:1.55;font-family:ui-monospace,Menlo,monospace;font-size:12.5px;margin:0;white-space:pre-wrap}
+.pane pre{background:var(--bg-tertiary);border:1px solid var(--glass-border);border-radius:10px;padding:10px;color:var(--text-dim)}
+iframe.preview{flex:1;width:100%;border:1px solid var(--glass-border);border-radius:10px;background:#fff}
+.chip{font-size:11px;padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.06);color:var(--text-dim);display:inline-flex;align-items:center;gap:5px}
+/* modal */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:70;padding:20px;backdrop-filter:blur(4px)}
+.modal{max-width:560px;width:100%;padding:24px;max-height:88vh;overflow:auto;border-radius:18px;
+  background:rgba(15,20,32,0.97);border:1px solid var(--glass-border);box-shadow:0 40px 100px rgba(0,0,0,0.7)}
+.modal h2{font-size:18px;margin:0 0 16px}
+.row{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+.row label{font-size:12px;color:var(--text-dim);font-weight:600}
+.inline{display:flex;gap:8px;align-items:center}
+.note{font-size:12px;color:var(--text-faint);margin-top:4px}
+.log{font-family:ui-monospace,monospace;font-size:11.5px;background:var(--bg-tertiary);border-radius:10px;padding:10px;max-height:240px;overflow:auto;margin-top:10px}
+.progress{font-variant-numeric:tabular-nums;font-size:15px;font-weight:700}
+.spin{width:14px;height:14px;border:2px solid rgba(255,255,255,0.22);border-top-color:#fff;border-radius:50%;display:inline-block;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+::-webkit-scrollbar{width:8px;height:8px}::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(156,163,175,0.3);border-radius:4px}::-webkit-scrollbar-thumb:hover{background:rgba(156,163,175,0.5)}
+[hidden]{display:none!important}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);padding:10px 18px;z-index:90;border-radius:11px;background:var(--bg-tertiary);border:1px solid var(--glass-border)}
+</style>
+</head>
+<body>
+<div class="viewport">
+  <div class="backdrop"></div>
+  <div class="center">
+    <div class="window">
+      <aside class="side">
+        <div class="brand"><img src="/wails-logo-white-text.svg" alt="Wails" /></div>
+        <div class="product">Translate</div>
+        <nav id="nav"></nav>
+        <div class="foot">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></svg>
+          <select id="uiLang" title="UI language" style="flex:1;padding:5px 8px;font-size:12px"></select>
+        </div>
+      </aside>
+      <section class="content">
+        <div class="chead"><h1 id="viewTitle"></h1><div class="spacer"></div><div id="headActions" class="inline"></div></div>
+        <div class="cbody" id="app"></div>
+        <div class="statusbar" id="statusbar"></div>
+      </section>
+    </div>
+  </div>
+</div>
+<div id="modalRoot"></div>
+<div id="menuRoot"></div>
+<div id="toast" class="toast" hidden></div>
+
+<script>
+//=================== icons ===================
+const IC = {
+  dash:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>',
+  gear:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
+  doc:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>',
+  plus:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>',
+  kebab:'<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>',
+  back:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>',
+  wand:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M15 4V2M15 10V8M9.5 8.5 8 7M21 9l-1.5-1.5M19 15h2M5 19l9-9-2-2-9 9 2 2z"/></svg>',
+};
+//=================== i18n ===================
+const I18N = { dict:{}, locale:'en', fallback:{} };
+function t(key, vars){ let s = I18N.dict[key] ?? I18N.fallback[key] ?? key;
+  if(vars) for(const k in vars) s = s.replaceAll('{'+k+'}', vars[k]); return s; }
+async function loadCatalog(loc){
+  try{ I18N.fallback = await (await fetch('/api/i18n/en')).json(); }catch(e){}
+  try{ I18N.dict = loc==='en'? I18N.fallback : await (await fetch('/api/i18n/'+loc)).json(); }
+  catch(e){ I18N.dict = I18N.fallback; }
+  I18N.locale = loc; document.documentElement.lang = loc;
+  document.documentElement.dir = ['ar','he','fa','ur'].includes(loc)?'rtl':'ltr';
+  localStorage.setItem('wt.uilang', loc);
+}
+//=================== api ===================
+const api = {
+  get:(u)=>fetch(u).then(r=>r.json()),
+  post:(u,b)=>fetch(u,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b||{})}).then(r=>r.json()),
+};
+function toast(msg){ const el=document.getElementById('toast'); el.textContent=msg; el.hidden=false; setTimeout(()=>el.hidden=true,2400); }
+const app=document.getElementById('app');
+let backend=null, locales=[], view={name:'dashboard',locale:null};
+let uiLocales=['en'];
+const UI_LANG_NAMES={en:'English',id:'Bahasa Indonesia'};
+function uiLangName(c){ return UI_LANG_NAMES[c]||c.toUpperCase(); }
+// setUILang switches the interface language everywhere: loads the catalog
+// (which persists the choice) and keeps the sidebar selector in sync.
+async function setUILang(code){ await loadCatalog(code); const s=document.getElementById('uiLang'); if(s) s.value=code; }
+
+//=================== chrome (sidebar + header + status) ===================
+function renderNav(){
+  const nav=document.getElementById('nav'); nav.innerHTML='';
+  nav.appendChild(navItem(IC.dash, t('nav.dashboard'), '', view.name==='dashboard', ()=>go('dashboard')));
+  nav.appendChild(navItem(IC.gear, t('llm.heading'), '', false, ()=>showLLMConfig('',null)));
+  if(locales.length){
+    const lbl=document.createElement('div'); lbl.className='navlabel'; lbl.textContent=t('dashboard.heading'); nav.appendChild(lbl);
+    locales.forEach(l=>nav.appendChild(navItem('', l.label, l.code+' · '+l.freshnessPct+'%',
+      view.name==='workspace'&&view.locale===l.code, ()=>go('workspace',l.code))));
+  }
+}
+function navItem(icon,label,mini,active,fn){
+  const d=document.createElement('div'); d.className='navitem'+(active?' active':'')+(icon?'':' noicon');
+  d.title=label+(mini?' · '+mini:''); // tooltip, useful when the label is truncated
+  d.innerHTML=`${icon?`<span class="ic">${icon}</span>`:''}<span class="lbl">${escapeHtml(label)}</span>${mini?`<span class="mini">${escapeHtml(mini)}</span>`:''}`;
+  d.onclick=fn; return d;
+}
+function setHeader(title, actions){
+  document.getElementById('viewTitle').textContent=title;
+  const ha=document.getElementById('headActions'); ha.innerHTML=''; (actions||[]).forEach(a=>ha.appendChild(a));
+}
+function renderStatus(){
+  const sb=document.getElementById('statusbar'); sb.style.display='flex'; if(!backend){sb.innerHTML='';return;}
+  let up=0,st=0,ms=0; locales.forEach(l=>{up+=l.upToDate;st+=l.stale;ms+=l.missing;});
+  sb.innerHTML=`<code>${escapeHtml(backend.root)}</code>
+    <span class="spacer"></span>
+    <span>${locales.length} locales</span><span class="num ok">${up} up to date</span>
+    <span class="num stale">${st} stale</span><span class="num missing">${ms} missing</span>`;
+}
+function go(name, locale){ view={name,locale}; renderNav();
+  if(name==='workspace') showWorkspace(locale);
+  else showDashboard(); }
+
+//=================== onboarding (modal over the dashboard) ===================
+// Onboarding is a modal so the dashboard (the main pane) is always behind it and
+// never swapped out. Step 1 introduces the tool + asks manual vs LLM; step 2 is
+// the provider/model picker. It is shown once, gated by localStorage.
+function showOnboardingModal(){
+  showModal(`<div id="obIntro" style="text-align:center">
+      <img src="/wails-logo-white-text.svg" alt="Wails" style="height:42px;margin-bottom:10px"/>
+      <h2 style="margin:0 0 6px">${t('splash.title')}</h2>
+      <p class="muted" style="line-height:1.55;margin:0 auto;max-width:440px">${t('splash.body')}</p>
+      <div class="inline" style="justify-content:center;gap:8px;margin-top:14px">
+        <label class="muted" style="font-size:13px">${t('onboard.uiLanguage')}</label>
+        <select id="obUiLang" style="padding:5px 10px;font-size:13px">${uiLocales.map(l=>`<option value="${escapeHtml(l)}"${l===I18N.locale?' selected':''}>${escapeHtml(uiLangName(l))}</option>`).join('')}</select>
+      </div>
+    </div>
+    <div id="obChoices" class="inline" style="gap:10px;justify-content:center;margin:20px 0 2px">
+      <button class="btn" id="obManual">${t('onboard.manual')}</button>
+      <button class="btn primary" id="obLLM">${t('onboard.useLLM')}</button>
+    </div>
+    <div id="obForm" hidden style="margin-top:18px;text-align:left"></div>`);
+  const ul=document.getElementById('obUiLang');
+  if(ul) ul.onchange=async()=>{ await setUILang(ul.value); showOnboardingModal(); }; // re-render so the modal text follows the chosen language
+  document.getElementById('obManual').onclick=()=>finishOnboarding();
+  document.getElementById('obLLM').onclick=()=>renderOnboardLLM();
+}
+function finishOnboarding(){ try{localStorage.setItem('wt.onboarded','1');}catch(e){} closeModal(); }
+async function renderOnboardLLM(){
+  document.getElementById('obChoices').style.display='none';
+  const intro=document.getElementById('obIntro'); if(intro) intro.style.display='none'; // already read on step 1
+  const box=document.getElementById('obForm'); box.hidden=false;
+  box.innerHTML=`<h3 style="font-size:15px;margin:4px 0 12px;text-align:center">${t('onboard.llmHeading')}</h3>
+    <div id="obPk"></div>
+    <div class="inline" style="justify-content:flex-end;gap:8px;margin-top:10px">
+      <button class="btn ghost" id="obBack">${t('onboard.back')}</button>
+      <button class="btn primary" id="obContinue">${t('onboard.continue')}</button></div>`;
+  const picker=await mountProviderPicker(document.getElementById('obPk'), '');
+  document.getElementById('obBack').onclick=()=>showOnboardingModal();
+  document.getElementById('obContinue').onclick=async()=>{
+    const body=picker.getConfig();
+    const st=await api.post('/api/llm/config',body).catch(()=>({}));
+    if(needsKey(body.provider)&&!(st&&st.hasKey)) toast(t('onboard.keyLater'));
+    finishOnboarding();
+  };
+}
+//=================== dashboard (table) ===================
+async function showDashboard(){
+  try{ locales = await api.get('/api/locales'); }
+  catch(e){ app.innerHTML=`<div class="muted" style="padding:24px">Couldn't reach the translation server (${escapeHtml(e.message||e)}).<br>It may have stopped or restarted — if you restarted <code>wails3 translate</code>, just retry.<br><br><button class="btn primary sm" onclick="showDashboard()">Retry</button></div>`; toast('Failed to load locales'); return; }
+  renderNav(); renderStatus();
+  const addBtn=mkbtn(t('dashboard.addLanguage'),'primary',showAddLocale,IC.plus);
+  setHeader(t('dashboard.heading'),[addBtn]);
+  let totStale=0,totMissing=0; locales.forEach(l=>{totStale+=l.stale;totMissing+=l.missing;});
+  const banner = (totStale+totMissing>0)
+    ? `<div class="banner">English has <b>${totMissing}</b> untranslated and <b>${totStale}</b> changed file(s) across locales since they were last updated.</div>`:'';
+  app.innerHTML = banner + `<table class="locales"><thead><tr>
+      <th>${t('dashboard.heading')}</th><th>Progress</th>
+      <th class="num">${t('dashboard.upToDate')}</th><th class="num">${t('dashboard.stale')}</th>
+      <th class="num">${t('dashboard.missing')}</th><th class="num">${t('dashboard.approved')}</th><th></th>
+    </tr></thead><tbody id="rows"></tbody></table>`;
+  const rows=document.getElementById('rows');
+  locales.forEach(l=>rows.appendChild(localeRow(l)));
+}
+// multi-segment freshness bar: up-to-date (green) | stale (gold) | missing (faint).
+// Zero-value segments are omitted; each segment has a hover tooltip (X of N).
+function freshnessBar(l){
+  const denom=Math.max(l.total-l.orphaned,1);
+  const pc=n=>(n/denom*100);
+  const segs=[
+    {n:l.upToDate, cls:'s-ok', label:t('dashboard.upToDate')},
+    {n:l.stale, cls:'s-stale', label:t('dashboard.stale')},
+    {n:l.missing, cls:'s-missing', label:t('dashboard.missing')},
+  ].filter(s=>s.n>0).map(s=>
+    `<span class="seg ${s.cls}" style="width:${pc(s.n)}%" data-tip="${s.n} ${escapeHtml(s.label.toLowerCase())} · ${Math.round(pc(s.n))}%"></span>`
+  ).join('');
+  return `<div class="fbar" role="img" aria-label="${l.upToDate} up to date, ${l.stale} stale, ${l.missing} missing of ${denom}">${segs}</div>`;
+}
+function localeRow(l){
+  const denom=l.total-l.orphaned;
+  const tr=document.createElement('tr');
+  tr.innerHTML=`
+    <td class="lang"><div class="name">${escapeHtml(l.label)}</div><div class="code">${escapeHtml(l.code)} · ${escapeHtml(l.lang)}</div></td>
+    <td><div class="pctcell">${freshnessBar(l)}<b class="gradient-text">${l.freshnessPct}%</b></div></td>
+    <td class="num ok">${l.upToDate}</td><td class="num stale">${l.stale}</td>
+    <td class="num missing">${l.missing}</td><td class="num">${l.approved}</td>
+    <td style="text-align:right"></td>`;
+  const cell=tr.lastElementChild;
+  cell.style.whiteSpace='nowrap';
+  if(l.missing||l.stale){
+    const b=mkbtn(t('llm.translate'),'primary sm',(e)=>{e.stopPropagation();startTranslate(l,'all');});
+    b.style.marginRight='6px'; cell.appendChild(b);
+  }
+  const k=document.createElement('span'); k.className='kebab'; k.innerHTML=IC.kebab;
+  k.onclick=(e)=>openMenu(e,l); cell.appendChild(k);
+  tr.querySelector('.lang').style.cursor='pointer';
+  tr.querySelector('.lang').onclick=()=>go('workspace',l.code);
+  return tr;
+}
+function openMenu(e,l){
+  e.stopPropagation();
+  const items=[{label:t('dashboard.openWorkspace'),fn:()=>go('workspace',l.code)}];
+  if(l.missing) items.push({label:t('dashboard.translateMissing',{n:l.missing}),fn:()=>startTranslate(l,'missing')});
+  if(l.stale) items.push({label:t('dashboard.updateStale',{n:l.stale}),fn:()=>startTranslate(l,'stale')});
+  if(l.missing||l.stale) items.push({sep:true},{label:t('dashboard.bringUpToDate'),fn:()=>startTranslate(l,'all')});
+  showMenu(e.clientX,e.clientY,items);
+}
+function showMenu(x,y,items){
+  const r=document.getElementById('menuRoot');
+  const m=document.createElement('div'); m.className='menu';
+  items.forEach(it=>{ if(it.sep){const s=document.createElement('div');s.className='sep';m.appendChild(s);return;}
+    const b=document.createElement('button'); b.textContent=it.label; b.onclick=()=>{closeMenu();it.fn();}; m.appendChild(b); });
+  r.innerHTML=''; r.appendChild(m);
+  const w=220, mx=Math.min(x,window.innerWidth-w-8); m.style.left=mx+'px'; m.style.top=(y+6)+'px';
+  setTimeout(()=>document.addEventListener('click',closeMenu,{once:true}),0);
+}
+function closeMenu(){ document.getElementById('menuRoot').innerHTML=''; }
+function mkbtn(label,cls,fn,icon){ const b=document.createElement('button'); b.className='btn '+cls;
+  b.innerHTML=(icon?`<span style="display:inline-flex;width:15px;height:15px;vertical-align:-2px;margin-right:6px">${icon}</span>`:'')+escapeHtml(label); b.onclick=fn; return b; }
+
+function escapeHtml(s){return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
+//=================== workspace ===================
+let ws={locale:null,files:[],current:null,mode:'side',filter:'all'};
+async function showWorkspace(code){
+  ws={locale:code,files:[],current:null,mode:'side',filter:'all'};
+  renderStatus();
+  setHeader(localeLabel(code),[mkbtn(t('review.heading'),'sm',()=>{ws.filter='attn';renderTree();}),
+    mkbtn(t('submit.heading'),'sm',()=>showSubmit(code))]);
+  app.innerHTML=`<div class="ws">
+     <div class="tree"><div class="filter">
+        <button class="btn ghost sm" data-f="all">${t('workspace.all')}</button>
+        <button class="btn ghost sm" data-f="attn">${t('workspace.needsAttention')}</button>
+     </div><div id="treelist"></div></div>
+     <div class="editor" id="editor"><div class="muted">${t('common.loading')}</div></div></div>`;
+  app.querySelectorAll('[data-f]').forEach(b=>b.onclick=()=>{ws.filter=b.dataset.f;renderTree();});
+  try{
+    ws.files=await api.get('/api/tree?locale='+encodeURIComponent(code));
+    renderTree();
+    document.getElementById('editor').innerHTML=`<div class="muted">${t('workspace.files')} →</div>`;
+  }catch(e){
+    document.getElementById('treelist').innerHTML=`<div class="muted">Couldn't reach the server (${escapeHtml(e.message||e)}). <button class="btn sm" id="retryWs">Retry</button></div>`;
+    const rBtn = document.getElementById('retryWs'); if(rBtn) rBtn.onclick=()=>showWorkspace(code);
+    document.getElementById('editor').innerHTML=`<div class="muted">Could not load files.</div>`;
+    toast('Failed to load files');
+  }
+}
+function localeLabel(code){ const l=locales.find(x=>x.code===code); return l?l.label+' · '+code:code; }
+function renderTree(){
+  const list=document.getElementById('treelist'); list.innerHTML='';
+  let files=ws.files; if(ws.filter==='attn') files=files.filter(f=>f.freshness!=='up_to_date');
+  files.forEach(f=>{ const n=document.createElement('div'); n.className='fnode'+(ws.current===f.path?' active':'');
+    n.innerHTML=`<span class="path">${escapeHtml(f.path)}</span>${f.viewed?'<span title="viewed">👁</span>':''}${f.reviewStatus==='approved'?'<span title="approved">✓</span>':''}<span class="badge b-${f.freshness}">${t('dashboard.'+freshKey(f.freshness))}</span>`;
+    n.onclick=()=>openFile(f.path); list.appendChild(n); });
+  if(!files.length) list.innerHTML=`<div class="muted">No files.</div>`;
+}
+function freshKey(f){ return {up_to_date:'upToDate',stale:'stale',missing:'missing',orphaned:'orphaned'}[f]||f; }
+async function openFile(path){
+  ws.current=path; renderTree();
+  const ed=document.getElementById('editor'); ed.innerHTML=`<div class="muted">${t('common.loading')}</div>`;
+  let fv;
+  try{ fv=await api.get(`/api/file?locale=${encodeURIComponent(ws.locale)}&path=${encodeURIComponent(path)}`); }
+  catch(e){ ed.innerHTML=`<div class="muted">Failed to load file: ${escapeHtml(e.message||e)}</div>`; toast('Failed to load file'); return; }
+  const rec=ws.files.find(f=>f.path===path)||{};
+  ed.innerHTML=`<div class="ehead"><strong style="font-size:13px">${escapeHtml(path)}</strong><span class="spacer"></span>
+      <button class="btn ghost sm" id="mRaw">${t('workspace.raw')}</button>
+      <button class="btn ghost sm" id="mSide">${t('workspace.sideBySide')}</button>
+      <button class="btn ghost sm" id="mPrev">${t('workspace.preview')}</button>
+      ${rec.freshness==='stale' && rec.hasSnapshot ? `<button class="btn ghost sm" id="mDiff" style="color:var(--stale)">${t('workspace.sourceDiff')}</button>` : ''}
+      <label class="chip"><input type="checkbox" id="cbView" ${rec.viewed?'checked':''}/> ${t('workspace.viewed')}</label>
+      <label class="chip"><input type="checkbox" id="cbAppr" ${rec.reviewStatus==='approved'?'checked':''}/> ${t('workspace.approve')}</label>
+      <button class="btn sm" id="btnTranslate" title="${t('workspace.translateHint')}">${IC.wand?`<span style="display:inline-flex;width:14px;height:14px;vertical-align:-2px;margin-right:5px">${IC.wand}</span>`:''}${t('llm.translate')}</button>
+      <button class="btn primary sm" id="btnSave">${t('workspace.save')}</button></div>
+    <div class="panes" id="panes"></div>`;
+  const panes=document.getElementById('panes');
+  function renderPanes(v){
+    if(v==='preview'){ panes.style.gridTemplateColumns='1fr 1fr';
+      panes.innerHTML=`<div class="pane"><label>${t('workspace.translation')}</label><textarea id="tgt"></textarea></div><div class="pane"><label>${t('workspace.preview')}</label><iframe class="preview" id="pvframe"></iframe></div>`;
+      document.getElementById('tgt').value=fv.target||''; startPreview(path);
+    } else if(v==='raw'){ panes.style.gridTemplateColumns='1fr';
+      panes.innerHTML=`<div class="pane"><label>${t('workspace.translation')}</label><textarea id="tgt"></textarea></div>`;
+      document.getElementById('tgt').value=fv.target||fv.source||'';
+    } else if(v==='diff'){ panes.style.gridTemplateColumns='1fr';
+      panes.innerHTML=`<div class="pane"><label>${t('workspace.sourceDiff')}</label><div id="diffView" style="flex:1;overflow:auto;background:var(--bg-tertiary);border:1px solid var(--glass-border);border-radius:10px;padding:10px;font-family:ui-monospace,Menlo,monospace;font-size:12.5px;color:var(--text-dim);white-space:pre-wrap">${t('common.loading')||'Loading...'}</div></div>`;
+      api.get('/api/sourcediff?locale='+encodeURIComponent(ws.locale)+'&path='+encodeURIComponent(path)).then(diff=>{
+        const ed=document.getElementById('diffView');
+        if(!diff||!diff.rows||diff.rows.length===0){ ed.innerHTML=t('workspace.noDiffAvailable'); return; }
+        let h='<div style="display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--glass-border);border:1px solid var(--glass-border);border-radius:6px;overflow:hidden">';
+        h+=`<div style="padding:6px 10px;background:rgba(0,0,0,0.2);font-weight:bold;font-size:11px;text-transform:uppercase;color:var(--text-dim)">${t('workspace.oldSource')}</div>`;
+        h+=`<div style="padding:6px 10px;background:rgba(0,0,0,0.2);font-weight:bold;font-size:11px;text-transform:uppercase;color:var(--text-dim)">${t('workspace.currentSource')}</div>`;
+        diff.rows.forEach(r=>{
+          const bg=r.changed?'rgba(202,161,58,0.1)':'var(--bg-tertiary)';
+          const col=r.changed?'var(--stale)':'inherit';
+          h+=`<div style="padding:8px 10px;background:${bg};color:${col};border-bottom:1px solid var(--glass-border)">${escapeHtml(r.source)}</div>`;
+          h+=`<div style="padding:8px 10px;background:${bg};color:${col};border-bottom:1px solid var(--glass-border)">${escapeHtml(r.target)}</div>`;
+        });
+        h+='</div>'; ed.innerHTML=h;
+      }).catch(e=>{ document.getElementById('diffView').textContent=t('workspace.diffFailed')+(e.message||e); });
+    } else { panes.style.gridTemplateColumns='1fr 1fr';
+      panes.innerHTML=`<div class="pane"><label>${t('workspace.source')}</label><pre id="src"></pre></div><div class="pane"><label>${t('workspace.translation')}</label><textarea id="tgt"></textarea></div>`;
+      document.getElementById('src').textContent=fv.source||''; document.getElementById('tgt').value=fv.target||'';
+    }
+  }
+  renderPanes(ws.mode==='preview'?'side':ws.mode);
+  document.getElementById('mRaw').onclick=()=>{ws.mode='raw';renderPanes('raw');};
+  document.getElementById('mSide').onclick=()=>{ws.mode='side';renderPanes('side');};
+  document.getElementById('mPrev').onclick=()=>{ws.mode='preview';renderPanes('preview');};
+  if(document.getElementById('mDiff')) document.getElementById('mDiff').onclick=()=>{ws.mode='diff';renderPanes('diff');};
+  document.getElementById('btnTranslate').onclick=()=>translateCurrentFile();
+  document.getElementById('btnSave').onclick=async()=>{ await api.post('/api/file',{locale:ws.locale,path,content:document.getElementById('tgt').value});
+    toast(t('workspace.saved')); ws.files=await api.get('/api/tree?locale='+encodeURIComponent(ws.locale)); renderTree(); };
+  document.getElementById('cbView').onchange=async(e)=>{ await api.post('/api/review',{locale:ws.locale,path,viewed:e.target.checked});
+    ws.files=await api.get('/api/tree?locale='+encodeURIComponent(ws.locale)); renderTree(); };
+  document.getElementById('cbAppr').onchange=async(e)=>{ await api.post('/api/review',{locale:ws.locale,path,approved:e.target.checked});
+    ws.files=await api.get('/api/tree?locale='+encodeURIComponent(ws.locale)); renderTree(); };
+}
+async function startPreview(path){ await api.post('/api/preview/start?locale='+encodeURIComponent(ws.locale),{});
+  const es=new EventSource('/api/preview/events');
+  es.onmessage=(m)=>{ const ev=JSON.parse(m.data);
+    if(ev.status==='ready'&&ev.url){ const f=document.getElementById('pvframe'); if(f) f.src=ev.url+'/'+ws.locale+'/'+path.replace(/\.mdx?$/,''); es.close(); } };
+}
+// translateCurrentFile machine-translates just the open file, then reloads it in
+// place so the human can review the result and approve. If no LLM is configured
+// yet it opens the config form first (then runs).
+async function translateCurrentFile(){
+  const path=ws.current; if(!path) return;
+  let cfg=null; try{ cfg=await api.get('/api/llm/config'); }catch(e){}
+  const ready=cfg&&cfg.model&&(!cfg.needsKey||cfg.hasKey);
+  if(ready) runFileJob(path);
+  else showLLMConfig(ws.locale,()=>runFileJob(path));
+}
+async function runFileJob(path){
+  const btn=document.getElementById('btnTranslate');
+  const orig=btn?btn.innerHTML:'';
+  if(btn){ btn.disabled=true; btn.innerHTML=`<span class="spin" style="width:12px;height:12px;margin-right:6px;vertical-align:-2px"></span>${t('workspace.translating')}`; }
+  const reset=()=>{ const b=document.getElementById('btnTranslate'); if(b){ b.disabled=false; b.innerHTML=orig; } };
+  let r; try{ r=await api.post('/api/translate',{locale:ws.locale,scope:'paths',paths:[path]}); }
+  catch(e){ toast('Failed: '+(e.message||e)); reset(); return; }
+  if(!r||r.error){ reset(); showLLMConfig(ws.locale,()=>runFileJob(path)); return; }
+  let hadError=false;
+  await new Promise((resolve)=>{
+    const es=new EventSource('/api/translate/events?jobId='+encodeURIComponent(r.jobId));
+    es.onmessage=(m)=>{ const ev=JSON.parse(m.data);
+      if(ev.type==='error'){ hadError=true; toast('✗ '+(ev.error||'error')); }
+      else if(ev.type==='done'){ es.close(); resolve(); } };
+    es.onerror=()=>{ es.close(); resolve(); };
+  });
+  if(!hadError) toast(t('workspace.translated'));
+  ws.files=await api.get('/api/tree?locale='+encodeURIComponent(ws.locale)).catch(()=>ws.files);
+  await openFile(path); // reloads the editor (and this button) with the new translation
+}
+//=================== translate job ===================
+// startTranslate(localeObj, scope): if an LLM is already configured this turn,
+// show a lightweight confirmation (count + target + model) rather than the full
+// config form; otherwise open the config form first. scope is missing|stale|all.
+async function startTranslate(l,scope){
+  const n = scope==='missing'?l.missing : scope==='stale'?l.stale : (l.missing+l.stale);
+  if(!n){ toast(t('translate.nothing')); return; }
+  let cfg=null; try{ cfg=await api.get('/api/llm/config'); }catch(e){}
+  const ready = cfg && cfg.model && (!cfg.needsKey || cfg.hasKey);
+  if(ready) confirmTranslate(l,scope,n,cfg);
+  else showLLMConfig(l.code,()=>runJob(l.code,scope));
+}
+function confirmTranslate(l,scope,n,cfg){
+  showModal(`<h2>${t('translate.confirmTitle')}</h2>
+    <p class="muted" style="line-height:1.5">${escapeHtml(t('translate.summary',{n,label:l.label,model:cfg.model}))}</p>
+    <div class="inline" style="justify-content:flex-end;gap:8px;margin-top:14px;flex-wrap:wrap">
+      <button class="btn ghost" id="ctCancel">${t('common.cancel')}</button>
+      <button class="btn sm" id="ctChange">${t('translate.changeModel')}</button>
+      <button class="btn primary" id="ctRun">${t('llm.translate')}</button></div>`);
+  document.getElementById('ctCancel').onclick=closeModal;
+  document.getElementById('ctChange').onclick=()=>showLLMConfig(l.code,()=>runJob(l.code,scope));
+  document.getElementById('ctRun').onclick=()=>{ closeModal(); runJob(l.code,scope); };
+}
+async function runJob(code,scope){
+  let r; try{ r=await api.post('/api/translate',{locale:code,scope}); }catch(e){ r={error:(e.message||e)+''}; }
+  // A failed start (e.g. missing API key) must be visible and actionable, not a
+  // flash toast — route the user to fix their LLM configuration, then retry.
+  if(!r||r.error){ const msg=(r&&r.error)||'Failed to start translation';
+    showModal(`<h2>${t('llm.translate')}</h2><p style="color:var(--err);line-height:1.5">${escapeHtml(msg)}</p>
+      <div class="inline" style="justify-content:flex-end;gap:8px;margin-top:14px">
+        <button class="btn ghost" id="jeClose">${t('common.close')}</button>
+        <button class="btn primary" id="jeCfg">${t('llm.heading')}</button></div>`);
+    document.getElementById('jeClose').onclick=closeModal;
+    document.getElementById('jeCfg').onclick=()=>showLLMConfig(code,()=>runJob(code,scope));
+    return; }
+  showModal(`<h2>${t('llm.translate')} · ${escapeHtml(code)}</h2>
+    <div class="inline" style="gap:10px;align-items:center"><span class="spin" id="jspin"></span><div class="progress" id="jp">${t('workspace.translating')}</div></div>
+    <div class="log" id="jlog"></div>
+    <div class="inline" style="justify-content:flex-end;margin-top:12px"><button class="btn" id="jclose">${t('common.close')}</button></div>`);
+  document.getElementById('jclose').onclick=closeModal;
+  const log=document.getElementById('jlog'),jp=document.getElementById('jp'),spin=document.getElementById('jspin');
+  let total=0,done=0;
+  const es=new EventSource('/api/translate/events?jobId='+encodeURIComponent(r.jobId));
+  es.onmessage=(m)=>{ const ev=JSON.parse(m.data);
+    if(ev.type==='start'){ total=ev.total||0; jp.textContent=`0 / ${total} · ${t('workspace.translating')}`; }
+    else if(ev.type==='file_start'){ jp.textContent=`${done} / ${total} · ${ev.path}`; }
+    else if(ev.type==='file_done'){ done=ev.index; jp.textContent=`${ev.index} / ${ev.total}`; log.innerHTML+=`<div>✓ ${escapeHtml(ev.path)}${ev.warnings&&ev.warnings.length?' ⚠ '+escapeHtml(ev.warnings.join(', ')):''}</div>`; }
+    else if(ev.type==='error'){ log.innerHTML+=`<div style="color:var(--err)">✗ ${escapeHtml(ev.path)}: ${escapeHtml(ev.error)}</div>`; }
+    else if(ev.type==='done'){ if(spin) spin.style.display='none'; jp.textContent=`${total} / ${total} · ${t('workspace.translated')}`; log.innerHTML+=`<div>— ${t('workspace.translated')} —</div>`; es.close(); showDashboard(); }
+    log.scrollTop=log.scrollHeight; };
+  es.onerror=()=>{ if(spin) spin.style.display='none'; jp.textContent+=' ⚠'; };
+}
+//=================== shared provider/model picker ===================
+// Renders provider + dynamic model dropdown + key/URL fields into `el`.
+// Anthropic: fixed model list. OpenRouter: models fetched from its API.
+// Local (Ollama): scans localhost; otherwise enter a URL and Scan for models.
+// Returns { getConfig() } for the caller to persist.
+async function mountProviderPicker(el, lang){
+  const cfg=await api.get('/api/llm/config').catch(()=>({}));
+  const md=await api.get('/api/models?lang='+encodeURIComponent(lang||'')).catch(()=>({recommendation:{}}));
+  const rec=md.recommendation||{};
+  el.innerHTML=`
+    <div class="row"><label>${t('llm.provider')}</label><select id="pk_prov">
+      <option value="anthropic">Anthropic</option>
+      <option value="openrouter">OpenRouter</option>
+      <option value="ollama">Local (Ollama)</option>
+    </select></div>
+    <div class="row" id="pk_keyrow"><label>${t('llm.apiKey')}</label><input id="pk_key" type="password" placeholder="${cfg.hasKey?'•••• (set)':''}"/><div class="note">${t('llm.keyNote')}</div></div>
+    <div class="row" id="pk_urlrow" hidden><label>${t('llm.serverUrl')}</label><div class="inline"><input id="pk_url" style="flex:1" placeholder="http://localhost:11434"/><button class="btn sm" id="pk_scan" type="button">${t('llm.scan')}</button></div><div class="note" id="pk_urlnote"></div></div>
+    <div class="row"><label>${t('llm.model')}</label><select id="pk_model"></select><div class="note" id="pk_modelnote"></div></div>`;
+  const prov=el.querySelector('#pk_prov');
+  prov.value=['anthropic','openrouter','ollama'].includes(cfg.provider)?cfg.provider:'anthropic';
+  const modelSel=el.querySelector('#pk_model'), note=el.querySelector('#pk_modelnote');
+  function setModels(models,selected,suggested){ models=models||[]; suggested=(suggested||[]).filter(m=>models.includes(m));
+    if(!models.length){ modelSel.innerHTML='<option value="">(none found)</option>'; return; }
+    const opt=m=>`<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`;
+    if(suggested.length){
+      const rest=models.filter(m=>!suggested.includes(m));
+      modelSel.innerHTML=`<optgroup label="${t('llm.suggested')}">${suggested.map(opt).join('')}</optgroup>`+
+        (rest.length?`<optgroup label="${t('llm.allModels')}">${rest.map(opt).join('')}</optgroup>`:'');
+    }else{
+      modelSel.innerHTML=models.map(opt).join('');
+    }
+    const pref=(selected&&models.includes(selected))?selected:(suggested[0]||models[0]);
+    if(pref) modelSel.value=pref;
+  }
+  async function reload(){
+    const p=prov.value;
+    el.querySelector('#pk_keyrow').hidden=(p==='ollama');
+    el.querySelector('#pk_urlrow').hidden=(p!=='ollama');
+    note.textContent=''; modelSel.innerHTML=`<option>${t('common.loading')}</option>`;
+    try{
+      if(p==='ollama'){
+        const r=await api.get('/api/llm/models?provider=ollama');
+        el.querySelector('#pk_url').value=r.url||'http://localhost:11434';
+        el.querySelector('#pk_urlnote').textContent=r.found?('✓ Detected Ollama at '+r.url):'No local Ollama found. Enter a URL and Scan.';
+        setModels(r.models,cfg.model,r.suggested);
+      }else{
+        const r=await api.get('/api/llm/models?provider='+p);
+        // The user's saved model wins; the per-language recommendation is only a
+        // fallback when nothing is saved (and is always shown in the note below).
+        const recDef=(rec.suggestions&&rec.suggestions[0]&&rec.suggestions[0].model);
+        setModels(r.models, cfg.model || recDef, r.suggested);
+        if(p==='anthropic'&&rec.rationale) note.innerHTML=`${t('llm.recommended')}: ${escapeHtml((rec.suggestions||[]).map(s=>s.model).join(', '))} — ${escapeHtml(rec.rationale)}`;
+        if(r.error) note.textContent='Could not load models: '+r.error;
+      }
+      if(rec.needsNativeReview) note.innerHTML+=(note.innerHTML?'<br>':'')+`<span style="color:var(--stale)">${t('review.nativeReview')}</span>`;
+    }catch(e){ setModels([]); note.textContent='Could not load models: '+(e.message||e); }
+  }
+  prov.onchange=reload;
+  el.querySelector('#pk_scan').onclick=async()=>{
+    const url=el.querySelector('#pk_url').value.trim(); if(!url) return;
+    modelSel.innerHTML=`<option>${t('common.loading')}</option>`;
+    try{ const r=await api.get('/api/llm/models?provider=ollama&url='+encodeURIComponent(url));
+      el.querySelector('#pk_urlnote').textContent=r.found?('✓ Found '+((r.models||[]).length)+' model(s)'):'No models found at this URL.';
+      setModels(r.models,cfg.model,r.suggested);
+    }catch(e){ el.querySelector('#pk_urlnote').textContent='Scan failed: '+(e.message||e); setModels([]); }
+  };
+  await reload();
+  return { getConfig(){ const p=prov.value;
+    return { provider:p, model:modelSel.value,
+      apiKey: el.querySelector('#pk_key')?el.querySelector('#pk_key').value:'',
+      baseURL: p==='ollama'?el.querySelector('#pk_url').value.trim():'' }; } };
+}
+function needsKey(p){ return p==='anthropic'||p==='openrouter'; }
+
+//=================== LLM config ===================
+async function showLLMConfig(langCode,onRun){
+  showModal(`<h2>${t('llm.heading')}</h2><div id="pkHost"></div>
+    <div class="inline" style="gap:8px;flex-wrap:wrap;margin-top:4px"><button class="btn sm" id="expCred">${t('llm.export')}</button>
+      <button class="btn sm" id="loadCred">${t('llm.load')}</button><span class="spacer" style="flex:1"></span>
+      <button class="btn ghost" id="cfgCancel">${t('common.cancel')}</button>
+      <button class="btn primary" id="cfgSave">${onRun?t('llm.translate'):t('workspace.save')}</button></div>`);
+  const picker=await mountProviderPicker(document.getElementById('pkHost'), langCode);
+  document.getElementById('cfgCancel').onclick=closeModal;
+  document.getElementById('expCred').onclick=exportCreds; document.getElementById('loadCred').onclick=loadCreds;
+  document.getElementById('cfgSave').onclick=async()=>{ const body=picker.getConfig();
+    const st=await api.post('/api/llm/config',body);
+    if(needsKey(body.provider)&&!st.hasKey){toast('API key required');return;}
+    closeModal(); if(onRun) onRun(); };
+}
+async function exportCreds(){ const def=await api.get('/api/llm/credentials/default');
+  const path=prompt(t('llm.export')+' →',def.path); if(!path) return;
+  const r=await api.post('/api/llm/credentials/export',{path}); toast(r.error?('⚠ '+r.error):('Saved to '+r.path)); }
+async function loadCreds(){ const def=await api.get('/api/llm/credentials/default');
+  const path=prompt(t('llm.load')+' ←',def.path); if(!path) return;
+  const r=await api.post('/api/llm/credentials/load',{path}); toast(r.error?('⚠ '+r.error):'Loaded'); }
+//=================== add locale / submit ===================
+function showAddLocale(){
+  showModal(`<h2>${t('dashboard.addLanguage')}</h2>
+    <div class="row"><label>Code</label><input id="lcode" placeholder="id"/></div>
+    <div class="row"><label>Label</label><input id="llabel" placeholder="Bahasa Indonesia"/></div>
+    <div class="row"><label>Lang (BCP-47)</label><input id="llang" placeholder="id"/></div>
+    <div class="row"><label>Direction</label><select id="ldir"><option>ltr</option><option>rtl</option></select></div>
+    <div class="inline" style="justify-content:flex-end;gap:8px"><button class="btn ghost" onclick="closeModal()">${t('common.cancel')}</button>
+      <button class="btn primary" id="addGo">${t('dashboard.addLanguage')}</button></div>`);
+  document.getElementById('addGo').onclick=async()=>{ const code=document.getElementById('lcode').value.trim(); if(!code){toast('code required');return;}
+    const r=await api.post('/api/locale/add',{code,label:document.getElementById('llabel').value,lang:document.getElementById('llang').value||code,dir:document.getElementById('ldir').value});
+    if(r.error){toast('⚠ '+r.error);return;} closeModal(); toast('Added '+code); showDashboard(); };
+}
+async function showSubmit(code){
+  const r=await api.post('/api/submit',{locale:code,mode:'export'});
+  const files=(r.changedFiles||[]).map(f=>`<div>${escapeHtml(f)}</div>`).join('')||`<div class="muted">No changes yet.</div>`;
+  const cmds=(r.commands||[]).map(c=>`<div>$ ${escapeHtml(c)}</div>`).join('');
+  showModal(`<h2>${t('submit.heading')} · ${escapeHtml(code)}</h2><p class="muted">${escapeHtml(r.message||'')}</p><div class="log">${files}</div>
+    <h2 style="margin-top:16px;font-size:14px">${t('submit.manual')}</h2><div class="log">${cmds}</div>
+    <div class="inline" style="justify-content:flex-end;gap:8px;margin-top:14px"><button class="btn ghost" onclick="closeModal()">${t('common.close')}</button>
+      <button class="btn primary" id="prGo" ${r.ghAvailable?'':'disabled'}>${t('submit.pr')}</button></div>`);
+  const pg=document.getElementById('prGo'); if(pg) pg.onclick=async()=>{ const pr=await api.post('/api/submit',{locale:code,mode:'pr'});
+    toast(pr.error?('⚠ '+pr.error):(pr.prUrl||pr.message||'PR opened')); };
+}
+//=================== modal ===================
+function showModal(html){ const r=document.getElementById('modalRoot');
+  r.innerHTML=`<div class="overlay"><div class="modal">${html}</div></div>`;
+  r.querySelector('.overlay').onclick=(e)=>{ if(e.target===r.querySelector('.overlay')) closeModal(); }; }
+function closeModal(){ document.getElementById('modalRoot').innerHTML=''; }
+//=================== boot ===================
+async function boot(){
+  uiLocales=await api.get('/api/uilocales').catch(()=>['en']);
+  const sel=document.getElementById('uiLang'); sel.innerHTML=uiLocales.map(l=>`<option value="${escapeHtml(l)}">${escapeHtml(uiLangName(l))}</option>`).join('');
+  const saved=localStorage.getItem('wt.uilang')||(navigator.language||'en').split('-')[0];
+  const start=uiLocales.includes(saved)?saved:'en'; sel.value=start;
+  sel.onchange=async()=>{ await loadCatalog(sel.value); go(view.name,view.locale); };
+  await loadCatalog(start);
+  backend=await api.get('/api/backend').catch(()=>null);
+  // Need locales for the sidebar/status even on the splash screen.
+  locales=await api.get('/api/locales').catch(()=>[]);
+  const h=location.hash;
+  if(h.startsWith('#workspace/')){ go('workspace', decodeURIComponent(h.slice('#workspace/'.length))); }
+  else {
+    go('dashboard'); // the main pane is always the dashboard
+    if(!localStorage.getItem('wt.onboarded')) showOnboardingModal(); // first run: modal on top
+  }
+}
+boot();
+</script>
+</body>
+</html>
