@@ -1,0 +1,20 @@
+{
+  "default": {
+    "rank": ["claude-opus-4-8", "claude-sonnet-4-6"],
+    "rationale": "Strong general multilingual quality."
+  },
+  "byLanguage": {
+    "ja":    { "rank": ["claude-opus-4-8", "claude-sonnet-4-6"], "rationale": "CJK: prefer the most capable model for nuance and honorifics." },
+    "zh-cn": { "rank": ["claude-opus-4-8", "claude-sonnet-4-6"], "rationale": "CJK nuance." },
+    "zh-tw": { "rank": ["claude-opus-4-8", "claude-sonnet-4-6"], "rationale": "CJK nuance." },
+    "ko":    { "rank": ["claude-opus-4-8", "claude-sonnet-4-6"], "rationale": "CJK + honorific register." },
+    "de":    { "rank": ["claude-opus-4-8", "claude-sonnet-4-6"], "rationale": "High-resource: any current Claude does well." },
+    "fr":    { "rank": ["claude-opus-4-8", "claude-sonnet-4-6"], "rationale": "High-resource: any current Claude does well." },
+    "pt":    { "rank": ["claude-opus-4-8", "claude-sonnet-4-6"], "rationale": "High-resource: any current Claude does well." },
+    "ru":    { "rank": ["claude-opus-4-8", "claude-sonnet-4-6"], "rationale": "High-resource: any current Claude does well." },
+    "id":    { "rank": ["claude-opus-4-8"], "rationale": "Mid/low-resource: prefer the most capable; native review recommended." },
+    "cy":    { "rank": ["claude-opus-4-8"], "rationale": "Lower-resource language: prefer the most capable, verify with a native reviewer." }
+  },
+  "nativeReviewLangs": ["cy", "id"],
+  "localPrivacyNote": "For sensitive/offline work, an Ollama model trades quality for privacy; always human-review."
+}
