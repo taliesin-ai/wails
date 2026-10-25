@@ -113,12 +113,19 @@ func GenerateBindings(options *flags.GenerateBindingsOptions, patterns []string)
 	}
 
 	// Process generator error.
+	//
+	// Warnings mean the generation run did not complete normally: the package
+	// patterns matched nothing, or some packages could not be loaded or
+	// type-checked. In that case the generated output is incomplete, so it must
+	// not replace the existing bindings (#6215).
+	incomplete := false
 	if err != nil {
 		var report *generator.ErrorReport
 		switch {
 		case errors.Is(err, generator.ErrNoPackages):
 			// Convert to warning message.
 			term.Warning(err)
+			incomplete = true
 		case errors.As(err, &report):
 			if report.HasErrors() {
 				// Report error count.
@@ -126,6 +133,7 @@ func GenerateBindings(options *flags.GenerateBindingsOptions, patterns []string)
 			} else if report.HasWarnings() {
 				// Report warning count.
 				term.Warning(report)
+				incomplete = true
 			}
 		default:
 			// Report error.
@@ -138,13 +146,34 @@ func GenerateBindings(options *flags.GenerateBindingsOptions, patterns []string)
 	// renaming over the output directory fails with "Access is denied" while
 	// a file watcher (e.g. Vite's dev server) holds it open (#5515).
 	if !swapped && generationDir != absPath {
-		if err := syncDirs(generationDir, absPath); err != nil {
+		if synced, err := installBindings(generationDir, absPath, incomplete); err != nil {
 			return fmt.Errorf("failed to install new bindings at %q: %w\nThe bindings directory may be partially updated. Re-run the command to retry.", absPath, err)
+		} else if !synced {
+			term.Warningf("Generation did not complete; the existing bindings in %s were left unchanged. Fix the reported problems and re-run the command.", absPath)
 		}
 		swapped = true
 	}
 
 	return nil
+}
+
+// installBindings makes dst's contents match src's, unless incomplete reports
+// that the generation run did not complete normally.
+//
+// syncDirs deletes every file in dst that src did not produce, so installing
+// the output of an incomplete run would delete bindings that are still valid.
+// When a package fails to load or type-check, no service bindings are emitted
+// for it, yet the remaining scaffolding is still written; syncing that would
+// leave the developer with a bindings directory that no longer contains what
+// their frontend imports (#6215). The existing bindings are preserved and src
+// is discarded instead.
+//
+// It reports whether the bindings were installed.
+func installBindings(src, dst string, incomplete bool) (bool, error) {
+	if incomplete {
+		return false, withRetry(func() error { return os.RemoveAll(src) })
+	}
+	return true, syncDirs(src, dst)
 }
 
 func pluralise(number int, word string) string {
