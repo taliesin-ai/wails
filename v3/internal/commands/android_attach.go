@@ -77,7 +77,20 @@ func startAndroidLogcat(ctx context.Context, serial, pid string) (<-chan error, 
 }
 
 func startAndroidLogcatWithWriters(ctx context.Context, serial, pid string, stdout, stderr io.Writer) (<-chan error, error) {
-	command := exec.CommandContext(ctx, "adb", "-s", serial, "logcat", "--pid="+pid, "-v", "brief")
+	return startAndroidLogcatWithFormat(ctx, serial, pid, "brief", stdout, stderr)
+}
+
+// androidLogcatArguments omits --pid when pid is empty so the whole log is streamed.
+func androidLogcatArguments(serial, pid, format string) []string {
+	arguments := []string{"-s", serial, "logcat"}
+	if pid != "" {
+		arguments = append(arguments, "--pid="+pid)
+	}
+	return append(arguments, "-v", format)
+}
+
+func startAndroidLogcatWithFormat(ctx context.Context, serial, pid, format string, stdout, stderr io.Writer) (<-chan error, error) {
+	command := exec.CommandContext(ctx, "adb", androidLogcatArguments(serial, pid, format)...)
 	command.Stdout = stdout
 	command.Stderr = stderr
 	configureManifestProcess(command)

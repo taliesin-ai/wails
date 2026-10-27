@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -193,6 +194,9 @@ func chooseAndroidDevice(ctx context.Context, options AndroidRunOptions, operati
 	if len(available) == 1 {
 		return available[0], nil
 	}
+	if len(available) == 0 && !operations.interactive() {
+		return startAndroidAVDNonInteractive(ctx, operations)
+	}
 	if !operations.interactive() {
 		return androidDevice{}, fmt.Errorf("found %d available Android targets; pass --device or --emulator for non-interactive deployment", len(available))
 	}
@@ -229,6 +233,43 @@ func chooseAndroidDevice(ctx context.Context, options AndroidRunOptions, operati
 		return androidDevice{}, err
 	}
 	return operations.startAVD(ctx, avd)
+}
+
+// startAndroidAVDNonInteractive starts an existing AVD when no device is connected
+// and no terminal is available to ask. It never creates an AVD, because that
+// would require a system image download.
+func startAndroidAVDNonInteractive(ctx context.Context, operations androidDeployOperations) (androidDevice, error) {
+	avds, err := operations.listAVDs(ctx)
+	if err != nil {
+		return androidDevice{}, err
+	}
+	if len(avds) == 0 {
+		return androidDevice{}, fmt.Errorf("no Android device is connected and no Android Virtual Devices are configured; install the system image and create one with:\n  sdkmanager %q\n  %s\nor connect a device and pass --device", androidSystemImage(), androidAVDCreateCommand())
+	}
+	names := append([]string(nil), avds...)
+	sort.Strings(names)
+	chosen := names[0]
+	if len(names) == 1 {
+		pterm.Info.Printfln("No Android device is connected; starting emulator %s", chosen)
+	} else {
+		pterm.Info.Printfln("No Android device is connected; starting %s (first of %d AVDs: %s). Pass --emulator to choose another", chosen, len(names), strings.Join(names, ", "))
+	}
+	return operations.startAVD(ctx, chosen)
+}
+
+func androidSystemImage() string {
+	return "system-images;android-35;google_apis;" + androidHostABI()
+}
+
+func androidAVDCreateCommand() string {
+	return fmt.Sprintf("avdmanager create avd -n Wails_API_35 -k %q", androidSystemImage())
+}
+
+func androidHostABI() string {
+	if runtime.GOARCH == "arm64" {
+		return "arm64-v8a"
+	}
+	return "x86_64"
 }
 
 func realAndroidDeployOperations() androidDeployOperations {

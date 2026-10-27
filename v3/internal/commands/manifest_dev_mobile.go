@@ -2,7 +2,6 @@ package commands
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net"
 	"os"
@@ -199,37 +198,144 @@ func configureMobileDev(ctx context.Context, options *DevOptions, output *dev.Ou
 	trackMobileDevArtifact(ops)
 	return cleanup, nil
 }
+
+// iosSimulatorOperations isolates simctl access so simulator selection and
+// provisioning decisions can be tested without Xcode.
+type iosSimulatorOperations struct {
+	listSimulators func(context.Context) ([]iosSimulator, error)
+	listRuntimes   func(context.Context) ([]iosRuntime, error)
+	create         func(ctx context.Context, name, deviceTypeID, runtimeID string) (string, error)
+	bootStatus     func(context.Context, string) error
+	openSimulator  func(context.Context) error
+}
+
+func realIOSSimulatorOperations() iosSimulatorOperations {
+	return iosSimulatorOperations{
+		listSimulators: listIOSSimulators,
+		listRuntimes:   listIOSRuntimes,
+		create:         createIOSSimulator,
+		bootStatus: func(ctx context.Context, udid string) error {
+			_, err := runManifestTool(ctx, "", "xcrun", "simctl", "bootstatus", udid, "-b")
+			return err
+		},
+		openSimulator: func(ctx context.Context) error {
+			_, err := runManifestCommand(ctx, "", nil, "open", "-a", "Simulator")
+			return err
+		},
+	}
+}
+
 func selectIOSDevSimulator(ctx context.Context, device string) (string, error) {
+	return selectIOSDevSimulatorWithOperations(ctx, device, realIOSSimulatorOperations())
+}
+
+func selectIOSDevSimulatorWithOperations(ctx context.Context, device string, operations iosSimulatorOperations) (string, error) {
 	if device == "" {
-		data, e := runManifestTool(ctx, "", "xcrun", "simctl", "list", "devices", "booted", "-j")
-		if e != nil {
-			return "", e
+		simulators, err := operations.listSimulators(ctx)
+		if err != nil {
+			return "", err
 		}
-		var list struct {
-			Devices map[string][]struct {
-				UDID string `json:"udid"`
+		var booted []iosSimulator
+		for _, simulator := range simulators {
+			if simulator.State == "Booted" && isIOSRuntimeID(simulator.RuntimeID) {
+				booted = append(booted, simulator)
 			}
 		}
-		if e = json.Unmarshal([]byte(data), &list); e != nil {
-			return "", e
-		}
-		for runtime, devices := range list.Devices {
-			if strings.Contains(runtime, "iOS") {
-				for _, d := range devices {
-					if device != "" {
-						return "", fmt.Errorf("multiple iOS simulators are booted; select one with --device")
-					}
-					device = d.UDID
-				}
+		switch len(booted) {
+		case 0:
+			udid, err := ensureIOSSimulator(ctx, simulators, operations)
+			if err != nil {
+				return "", err
 			}
-		}
-		if device == "" {
-			return "", fmt.Errorf("no iOS simulator is booted; pass --device with a simulator UDID to boot it")
+			// Opening the app is cosmetic; a failure must not block the boot.
+			_ = operations.openSimulator(ctx)
+			device = udid
+		case 1:
+			device = booted[0].UDID
+		default:
+			return "", fmt.Errorf("multiple iOS simulators are booted; select one with --device")
 		}
 	}
 	// bootstatus starts a selected shutdown simulator and waits for usability.
-	_, err := runManifestTool(ctx, "", "xcrun", "simctl", "bootstatus", device, "-b")
-	return device, err
+	return device, operations.bootStatus(ctx, device)
+}
+
+// ensureIOSSimulator returns an available iPhone simulator, preferring the newest
+// iOS runtime. When none exists it creates "Wails iPhone" from the newest iOS
+// runtime and the newest iPhone type that runtime supports.
+func ensureIOSSimulator(ctx context.Context, simulators []iosSimulator, operations iosSimulatorOperations) (string, error) {
+	if chosen, ok := newestIPhoneSimulator(simulators); ok {
+		return chosen.UDID, nil
+	}
+	runtimes, err := operations.listRuntimes(ctx)
+	if err != nil {
+		return "", err
+	}
+	runtime, deviceType, err := newestIOSCreationTarget(runtimes)
+	if err != nil {
+		return "", err
+	}
+	return operations.create(ctx, "Wails iPhone", deviceType.Identifier, runtime.Identifier)
+}
+
+func newestIPhoneSimulator(simulators []iosSimulator) (iosSimulator, bool) {
+	var chosen iosSimulator
+	found := false
+	for _, simulator := range simulators {
+		if !isIOSRuntimeID(simulator.RuntimeID) || !strings.HasPrefix(simulator.Name, "iPhone") {
+			continue
+		}
+		// Keep the first candidate on equal runtimes so listing order stays deterministic.
+		if !found || compareSimRuntimeVersions(simulator.RuntimeID, chosen.RuntimeID) > 0 {
+			chosen, found = simulator, true
+		}
+	}
+	return chosen, found
+}
+
+func newestIOSCreationTarget(runtimes []iosRuntime) (iosRuntime, iosDeviceType, error) {
+	var newest *iosRuntime
+	for i := range runtimes {
+		candidate := &runtimes[i]
+		if !candidate.Available || !isIOSRuntimeID(candidate.Identifier) {
+			continue
+		}
+		if newest == nil || compareSimRuntimeVersions(candidate.Identifier, newest.Identifier) > 0 {
+			newest = candidate
+		}
+	}
+	if newest == nil {
+		return iosRuntime{}, iosDeviceType{}, fmt.Errorf("no iOS simulator runtime is installed; install one in Xcode under Settings > Platforms")
+	}
+	// Choose the highest-numbered iPhone the runtime supports; later entries win ties.
+	var chosen iosDeviceType
+	chosenNumber := -1
+	for _, deviceType := range newest.DeviceTypes {
+		number, ok := iPhoneModelNumber(deviceType.Name)
+		if !ok {
+			continue
+		}
+		if number >= chosenNumber {
+			chosen, chosenNumber = deviceType, number
+		}
+	}
+	if chosenNumber < 0 {
+		return iosRuntime{}, iosDeviceType{}, fmt.Errorf("iOS runtime %s supports no iPhone simulator device type", newest.Identifier)
+	}
+	return *newest, chosen, nil
+}
+
+// iPhoneModelNumber parses the model number from names such as "iPhone 16 Pro".
+func iPhoneModelNumber(name string) (int, bool) {
+	fields := strings.Fields(name)
+	if len(fields) < 2 || fields[0] != "iPhone" {
+		return 0, false
+	}
+	number, err := strconv.Atoi(fields[1])
+	if err != nil {
+		return 0, false
+	}
+	return number, true
 }
 func launchMobileDev(ctx context.Context, options *DevOptions, output *dev.Output, device, root, artifact, url string, port int, applicationID string, applicationArgs []string) (dev.Process, error) {
 	host := "127.0.0.1"
