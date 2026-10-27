@@ -168,7 +168,7 @@ func setupDarwinSigning(save signingSetupSave) error {
 		huh.NewGroup(
 			huh.NewInput().
 				Title("Keychain profile name").
-				Description("The profile name used with 'wails3 signing credentials'").
+				Description("The keychain profile name stored with xcrun notarytool store-credentials").
 				Placeholder("my-notarize-profile").
 				Value(&keychainProfile),
 		).WithHideFunc(func() bool {
@@ -213,11 +213,10 @@ func setupDarwinSigning(save signingSetupSave) error {
 		fmt.Println()
 		pterm.Info.Println("Next step: Store your notarization credentials:")
 		fmt.Println()
-		pterm.Println(pterm.LightBlue(fmt.Sprintf(`  wails3 signing credentials \
+		pterm.Println(pterm.LightBlue(fmt.Sprintf(`  xcrun notarytool store-credentials "%s" \
     --apple-id "your@email.com" \
     --team-id "TEAMID" \
-    --password "app-specific-password" \
-    --profile "%s"`, keychainProfile)))
+    --password "app-specific-password"`, keychainProfile)))
 		fmt.Println()
 	}
 

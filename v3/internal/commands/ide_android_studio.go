@@ -56,6 +56,9 @@ func AndroidStudio(options *AndroidStudioOptions, arguments []string) error {
 		return err
 	}
 	root := loaded.Config.Root
+	if err := ensureWailsStateDirectory(root); err != nil {
+		return err
+	}
 	project := filepath.Join(root, ".wails", "ide", "android")
 	result, err := materialiseIDEProject(ideMaterialiseOptions{
 		Source:      filepath.Join(root, filepath.FromSlash(pkg.Assets), "android"),

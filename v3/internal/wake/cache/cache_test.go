@@ -1040,9 +1040,11 @@ func TestSnapshotStableMetadataFastPathAndSymlinkContent(t *testing.T) {
 	second, err := store.Snapshot(SnapshotOptions{Label: "source", Root: ".", IncludeAll: true})
 	require.NoError(t, err)
 	assert.Equal(t, first, second)
-	wantReused := 1
+	// OpenCache creates .wails/.gitignore, which an include-all snapshot also
+	// sees as a regular file, so it adds one reusable digest.
+	wantReused := 2
 	if platformIdentityTracksChanges() {
-		wantReused = 2
+		wantReused = 3
 	}
 	assert.Equal(t, wantReused, store.Stats().DigestsReused)
 

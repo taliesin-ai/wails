@@ -252,7 +252,7 @@ var schemaAttributeExamples = map[string]string{
 
 func schemaDescription(path, name string) string {
 	if isPlatformFormatsPath(path) {
-		return "Package formats produced by `wails3 package` for this platform when no profile or --formats selects them; overrides the built-in default."
+		return "Package formats produced for this platform when no profile target or --formats selects them; overrides the built-in default."
 	}
 	if path == "dev.args" || strings.HasSuffix(path, ".dev.args") {
 		return "Development application arguments passed without shell expansion; supported on desktop and iOS. Android requires an empty list."
