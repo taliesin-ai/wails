@@ -31,6 +31,15 @@ func TestCompileGoArgsAddsWindowsGUISubsystemToProductionBuilds(t *testing.T) {
 	assert.Equal(t, "-X main.v=1 -H=windowsgui", argumentAfter(args, "-ldflags"))
 }
 
+func TestCompileGoArgsKeepsProductionWindowsServerBuildsOnTheConsoleSubsystem(t *testing.T) {
+	_, args := compileGoArgs(pipeline.CompileSpec{TargetOS: "windows", TargetArch: "amd64", Production: true, Server: true, Strip: true})
+	assert.Equal(t, "-w -s", argumentAfter(args, "-ldflags"))
+	assert.NotContains(t, argumentAfter(args, "-ldflags"), "windowsgui")
+
+	_, args = compileGoArgs(pipeline.CompileSpec{TargetOS: "windows", TargetArch: "amd64", Production: true, Server: true, LinkerFlags: []string{"-X", "main.v=1"}})
+	assert.Equal(t, "-X main.v=1", argumentAfter(args, "-ldflags"))
+}
+
 func TestCompileGoArgsLeavesDevelopmentAndOtherPlatformsOnTheConsoleSubsystem(t *testing.T) {
 	_, args := compileGoArgs(pipeline.CompileSpec{TargetOS: "windows", TargetArch: "amd64", Production: false, Strip: true})
 	assert.Equal(t, "-w -s", argumentAfter(args, "-ldflags"))
