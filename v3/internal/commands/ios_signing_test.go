@@ -49,15 +49,42 @@ func TestRewriteIOSXcodeProjectAddsDevelopmentTeamToEveryConfiguration(t *testin
 	require.NoError(t, IOSXcodeGen(&IOSXcodeGenOptions{OutDir: out, Config: filepath.Join(t.TempDir(), "missing.yml")}))
 	template, err := os.ReadFile(filepath.Join(out, "main.xcodeproj", "project.pbxproj"))
 	require.NoError(t, err)
-	rewritten, err := rewriteIOSXcodeProject(template, "Wails App.a", "ABCDE12345")
+	rewritten, err := rewriteIOSXcodeProject(template, "Wails App.a", iosXcodeSigning{Team: "ABCDE12345"})
 	require.NoError(t, err)
 	text := string(rewritten)
 	assert.Equal(t, 2, strings.Count(text, "DEVELOPMENT_TEAM = ABCDE12345;"))
-	assert.Equal(t, 2, strings.Count(text, "buildSettings = {\n\t\t\t\tDEVELOPMENT_TEAM = ABCDE12345;\n"))
+	assert.Equal(t, 2, strings.Count(text, "CODE_SIGN_STYLE = Automatic;"))
+	assert.Equal(t, 2, strings.Count(text, `CODE_SIGN_IDENTITY = "Apple Development";`))
+	assert.Equal(t, 2, strings.Count(text, "CODE_SIGNING_ALLOWED = YES;"))
+	assert.NotContains(t, text, "CODE_SIGNING_ALLOWED = NO;")
+	assert.Contains(t, text, `PRODUCT_BUNDLE_IDENTIFIER = "`, "bundle identifier must remain set")
+}
 
-	untouched, err := rewriteIOSXcodeProject(template, "Wails App.a", "")
+func TestRewriteIOSXcodeProjectUsesConfiguredIdentity(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "xcode")
+	require.NoError(t, IOSXcodeGen(&IOSXcodeGenOptions{OutDir: out, Config: filepath.Join(t.TempDir(), "missing.yml")}))
+	template, err := os.ReadFile(filepath.Join(out, "main.xcodeproj", "project.pbxproj"))
 	require.NoError(t, err)
-	assert.NotContains(t, string(untouched), "DEVELOPMENT_TEAM")
+	rewritten, err := rewriteIOSXcodeProject(template, "Wails App.a", iosXcodeSigning{Team: "ABCDE12345", Identity: "Apple Distribution: Jane Doe (ABCDE12345)"})
+	require.NoError(t, err)
+	assert.Equal(t, 2, strings.Count(string(rewritten), `CODE_SIGN_IDENTITY = "Apple Distribution: Jane Doe (ABCDE12345)";`))
+
+	_, err = rewriteIOSXcodeProject(template, "Wails App.a", iosXcodeSigning{Team: "ABCDE12345", Identity: `bad"identity`})
+	require.Error(t, err)
+}
+
+func TestRewriteIOSXcodeProjectWithoutTeamStaysUnsigned(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "xcode")
+	require.NoError(t, IOSXcodeGen(&IOSXcodeGenOptions{OutDir: out, Config: filepath.Join(t.TempDir(), "missing.yml")}))
+	template, err := os.ReadFile(filepath.Join(out, "main.xcodeproj", "project.pbxproj"))
+	require.NoError(t, err)
+	unsigned, err := rewriteIOSXcodeProject(template, "Wails App.a", iosXcodeSigning{})
+	require.NoError(t, err)
+	text := string(unsigned)
+	assert.Equal(t, 2, strings.Count(text, "CODE_SIGNING_ALLOWED = NO;"))
+	assert.NotContains(t, text, "DEVELOPMENT_TEAM")
+	assert.NotContains(t, text, "CODE_SIGN_STYLE")
+	assert.NotContains(t, text, "CODE_SIGNING_ALLOWED = YES;")
 }
 
 func TestRewriteIOSXcodeProjectRejectsInvalidTeam(t *testing.T) {
@@ -65,7 +92,7 @@ func TestRewriteIOSXcodeProjectRejectsInvalidTeam(t *testing.T) {
 	require.NoError(t, IOSXcodeGen(&IOSXcodeGenOptions{OutDir: out, Config: filepath.Join(t.TempDir(), "missing.yml")}))
 	template, err := os.ReadFile(filepath.Join(out, "main.xcodeproj", "project.pbxproj"))
 	require.NoError(t, err)
-	_, err = rewriteIOSXcodeProject(template, "Wails App.a", "bad team")
+	_, err = rewriteIOSXcodeProject(template, "Wails App.a", iosXcodeSigning{Team: "bad team"})
 	require.Error(t, err)
 }
 
