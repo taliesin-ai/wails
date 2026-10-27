@@ -310,6 +310,7 @@ export default defineConfig({
           items: [
             { label: "Overview", link: "/experimental" },
             { label: "Wake", link: "/experimental/wake" },
+            { label: "Moving from Taskfiles", link: "/experimental/taskfile-to-wake" },
             { label: "LLM Control (MCP)", link: "/guides/mcp-service" },
           ],
         },

@@ -5,6 +5,8 @@ sidebar:
     order: 52
 ---
 
+import { Aside } from '@astrojs/starlight/components';
+
 Wails v3 supports server mode, allowing you to run your application as a pure HTTP server without creating native windows or requiring GUI dependencies. This enables deploying the same Wails application to servers, containers, and web browsers.
 
 Server mode is useful for:
@@ -16,6 +18,10 @@ Server mode is useful for:
 - **Microservices** - Use Wails bindings in headless backend services
 
 ## Quick Start
+<Aside type="note" title="With wake">
+Taskfiles are the default build system, and the commands on this page keep working. To build the same app from a `wails.yaml` manifest instead, set `WAILS_EXP_USE_WAKE` and follow [Moving from Taskfiles to wake](/experimental/taskfile-to-wake).
+</Aside>
+
 
 Server mode is enabled via the `server` build tag. Your application code remains the same - you just build with the tag:
 
