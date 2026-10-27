@@ -85,7 +85,6 @@ func TestProfileTargetValidationCoversEveryProductionConstraint(t *testing.T) {
 		message string
 	}{
 		{name: "duplicate format", target: ProfileTarget{Target: "linux/amd64", Formats: []string{"deb", "deb"}}, message: "duplicate format"},
-		{name: "development-only format", target: ProfileTarget{Target: "android/arm64", Formats: []string{"apk"}}, message: "not a production format"},
 		{name: "destination on desktop", target: ProfileTarget{Target: "linux/amd64", Destination: "device"}, message: "only valid for iOS"},
 		{name: "invalid iOS destination", target: ProfileTarget{Target: "ios/arm64", Destination: "phone"}, message: "simulator or device"},
 		{name: "missing iOS destination", target: ProfileTarget{Target: "ios/arm64"}, message: "requires destination"},

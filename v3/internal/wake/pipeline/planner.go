@@ -27,6 +27,7 @@ func PlanBuild(config manifest.Config, request Request) (Plan, error) {
 		return Plan{}, err
 	}
 	combined := Plan{Name: request.Verb, Intent: BuildIntent{Command: request.Verb, Profile: config.Profile}, Nodes: map[NodeKey]Node{}}
+	request.mobileTag = sharedMobileTag(outcomes)
 	for _, outcome := range outcomes {
 		if len(config.Project.SupportedPlatforms) > 0 && !contains(config.Project.SupportedPlatforms, outcome.target.OS) {
 			return Plan{}, manifest.AnnotateValidationError(fmt.Errorf("project %s does not support %s", config.Project.Name, outcome.target.OS), config.Origins, "project.supported_platforms")
@@ -86,6 +87,24 @@ func PlanBuild(config manifest.Config, request Request) (Plan, error) {
 	}
 	combined.Roots = []NodeKey{collectKey}
 	return combined, combined.Validate(config.Root)
+}
+
+// sharedMobileTag returns the ios or android build tag when all outcomes target
+// the same mobile OS. Mixed plans get no tag so shared bindings stay identical.
+func sharedMobileTag(outcomes []buildOutcome) string {
+	if len(outcomes) == 0 {
+		return ""
+	}
+	targetOS := outcomes[0].target.OS
+	for _, outcome := range outcomes[1:] {
+		if outcome.target.OS != targetOS {
+			return ""
+		}
+	}
+	if targetOS == "android" || targetOS == "ios" {
+		return targetOS
+	}
+	return ""
 }
 
 func addPlanNodes(combined *Plan, child Plan) error {
@@ -266,8 +285,10 @@ func planTarget(config manifest.Config, request Request, multiTarget bool) (Plan
 	if obfuscated {
 		tags = appendUnique(tags, "wails_obfuscated")
 	}
-	if request.Verb == "run" && (request.TargetOS == "android" || request.TargetOS == "ios") {
-		tags = appendUnique(tags, request.TargetOS)
+	// Bindings are a project-scope node shared by every target in the plan, so the
+	// mobile OS tag applies only when the whole plan is one mobile OS.
+	if request.mobileTag != "" {
+		tags = appendUnique(tags, request.mobileTag)
 	}
 	localInputs, err := goLocalSourceInputs(config.Root)
 	if err != nil {
@@ -499,7 +520,7 @@ func planTarget(config manifest.Config, request Request, multiTarget bool) (Plan
 		if !known {
 			return Plan{}, fmt.Errorf("unknown package format %q", format)
 		}
-		if !capability.SupportsFormat(format, request.Development || (request.Verb == "run" && format == "apk")) {
+		if !capability.SupportsFormat(format, request.Development || request.Verb == "run" && format == "apk") {
 			mode := "production"
 			if request.Development {
 				mode = "development"
@@ -525,6 +546,9 @@ func planTarget(config manifest.Config, request Request, multiTarget bool) (Plan
 	packageHookOutput := packageScopeOutput(packageOutputs)
 	beforePackage := hookNode(manifest.BeforePackage, TargetScope, packageHookOutput, appendUniqueKeys(append([]NodeKey(nil), beforePackageDeps...), assets))
 	var packageRoots []NodeKey
+	// releaseSignedPackages are release APKs that get a sign node in every verb
+	// because android signing is enabled for the manifest.
+	releaseSignedPackages := map[NodeKey]bool{}
 	finalOutputs := make(map[NodeKey]string, len(formats))
 	for _, format := range formats {
 		pkgConfig := registeredPackageFormat(config.Package, request.TargetOS, format)
@@ -549,16 +573,25 @@ func planTarget(config manifest.Config, request Request, multiTarget bool) (Plan
 		if format == "dmg" || format == "ipa" {
 			packageBinary = plan.Nodes[lastRunnable].Output
 		}
+		// A production APK is a Gradle release build. When android signing is
+		// enabled it gets a sign node in every verb. Otherwise it is debug-signed
+		// in the package stage so it installs, and the handler warns about it.
+		releaseAPK := format == "apk" && !request.Development && request.Verb != "run"
+		releaseSigned := releaseAPK && config.Signing.Android.Enabled
+		debugSign := releaseAPK && !releaseSigned && !request.sign
 		pkg := add(Node{Key: key, Kind: PackageArtifact, Label: "Package " + format, Scope: PackageScope, Dependencies: packageDeps,
-			Spec:   PackageSpec{Development: request.Development, TargetOS: request.TargetOS, TargetArch: request.TargetArch, Format: format, Binary: packageBinary, Binaries: append([]ComponentBinary(nil), componentBinaries...), Assets: assetsOut, Output: output, Profile: profileName, Destination: destination, MinimumVersion: targetSettings.MinimumVersion, Config: pkgConfig, Project: project, Capabilities: platformSettings.Capabilities, Associations: associations, Protocols: protocols},
+			Spec:   PackageSpec{Development: request.Development, TargetOS: request.TargetOS, TargetArch: request.TargetArch, Format: format, Binary: packageBinary, Binaries: append([]ComponentBinary(nil), componentBinaries...), Assets: assetsOut, Output: output, Profile: profileName, Destination: destination, MinimumVersion: targetSettings.MinimumVersion, Config: pkgConfig, Project: project, Capabilities: platformSettings.Capabilities, Associations: associations, Protocols: protocols, Release: releaseAPK, DebugSign: debugSign},
 			Inputs: packageInputs(config.Root, request.TargetOS, format, pkgConfig), Output: output, Cache: packageCache, Claims: ResourceClaims{CPU: 1, MemoryMB: 1024, Exclusive: packageExclusive(request.TargetOS, format)}, EstimateMS: 1000, Artifact: ArtifactIdentity{Kind: ArtifactPackage, Target: Target{OS: request.TargetOS, Arch: request.TargetArch}, Format: format}})
 		packageRoots = append(packageRoots, pkg)
+		if releaseSigned {
+			releaseSignedPackages[pkg] = true
+		}
 		finalOutputs[pkg] = finalOutput
 	}
 	packageArtifacts := append([]NodeKey(nil), packageRoots...)
 	afterPackage := hookNode(manifest.AfterPackage, TargetScope, packageHookOutput, packageRoots)
 	terminalHook := afterPackage
-	if request.sign {
+	if request.sign || len(releaseSignedPackages) > 0 {
 		beforeSignDeps := append([]NodeKey(nil), packageRoots...)
 		if afterPackage != "" {
 			beforeSignDeps = []NodeKey{afterPackage}
@@ -566,6 +599,10 @@ func planTarget(config manifest.Config, request Request, multiTarget bool) (Plan
 		beforeSign := hookNode(manifest.BeforeSign, TargetScope, packageHookOutput, beforeSignDeps)
 		var signed []NodeKey
 		for _, artifact := range packageArtifacts {
+			if !request.sign && !releaseSignedPackages[artifact] {
+				signed = append(signed, artifact)
+				continue
+			}
 			input := plan.Nodes[artifact].Output
 			dependencies := appendUniqueKeys([]NodeKey{artifact}, packageRoots...)
 			if beforeSign != "" {

@@ -93,8 +93,14 @@ func TestRunAndroidPlanUsesProductionTagsAndInstallableAPK(t *testing.T) {
 		}
 	}
 	require.True(t, apk, "run must produce an installable APK rather than an AAB")
-	_, err = PlanBuild(config, Request{Verb: "build", TargetOS: "android", TargetArch: "arm64", Formats: []string{"apk"}})
-	require.ErrorContains(t, err, "production APK")
+	plan, err = PlanBuild(config, Request{Verb: "build", TargetOS: "android", TargetArch: "arm64", Formats: []string{"apk"}})
+	require.NoError(t, err)
+	for _, node := range plan.Nodes {
+		if spec, ok := node.Spec.(PackageSpec); ok && spec.Format == "apk" {
+			require.True(t, spec.Release, "production APK must be a Gradle release build")
+			require.True(t, spec.DebugSign, "unsigned release APK must be debug-signed when android signing is not configured")
+		}
+	}
 }
 
 // Exercise the planner's inputs through the executor's actual warm cache with

@@ -2490,13 +2490,25 @@ func (h *manifestHandler) packageAndroid(ctx context.Context, s pipeline.Package
 	}
 	task := "assembleDebug"
 	producedRelative := filepath.Join("app", "build", "outputs", "apk", "debug", "app-debug.apk")
-	if s.Format == "aab" {
+	switch {
+	case s.Format == "aab":
 		task = "bundleRelease"
 		producedRelative = filepath.Join("app", "build", "outputs", "bundle", "release", "app-release.aab")
+	case s.Release:
+		// prepareUnsignedAndroidRelease strips Gradle signing, so AGP emits the unsigned release APK.
+		task = "assembleRelease"
+		producedRelative = filepath.Join("app", "build", "outputs", "apk", "release", "app-release-unsigned.apk")
 	}
 	output, err := runManifestCommand(ctx, staged, nil, gradlew, task)
 	if err != nil {
 		return pipeline.RunResult{Detail: output}, err
+	}
+	if needsAndroidDebugSign(s) {
+		signed := filepath.Join("app", "build", "outputs", "apk", "release", "app-release-debug-signed.apk")
+		if err := signReleaseAPKWithDebugKeystore(ctx, staged, filepath.Join(staged, producedRelative), filepath.Join(staged, signed)); err != nil {
+			return pipeline.RunResult{Detail: output}, err
+		}
+		producedRelative = signed
 	}
 	if err := replacePathTransactional(staged, workspace); err != nil {
 		return pipeline.RunResult{}, err
@@ -2736,7 +2748,7 @@ func (h *manifestHandler) sign(ctx context.Context, s pipeline.SignSpec) (pipeli
 		err = produceNamedPathTransactional(output, ".android-sign-output-*", filepath.Base(input), func(staged string) error {
 			var signErr error
 			if s.Format == "apk" {
-				detail, signErr = runManifestCommand(ctx, h.root, nil, "apksigner", "sign", "--ks", keystore, "--ks-key-alias", keyAlias, "--ks-pass", "env:"+s.Config.Credential, "--out", staged, input)
+				detail, signErr = alignAndSignAPK(ctx, h.root, input, staged, []string{"--ks", keystore, "--ks-key-alias", keyAlias, "--ks-pass", "env:" + s.Config.Credential})
 			} else {
 				detail, signErr = runManifestCommand(ctx, h.root, nil, "jarsigner", "-keystore", keystore, "-storepass:env", s.Config.Credential, "-signedjar", staged, input, keyAlias)
 			}
