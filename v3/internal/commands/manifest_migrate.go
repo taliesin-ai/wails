@@ -592,6 +592,7 @@ func analyseMigration(root string) (MigrationReport, manifest.Document, error) {
 	bindingTimeType := ""
 	bindingsCommandSeen := false
 	buildTidy := false
+	linuxFormats := false
 	// Replacement actions are collected per distinct action text so each one
 	// is reported once per project, naming every stock task it covers.
 	replacementTasks := map[string][]string{}
@@ -748,7 +749,8 @@ func analyseMigration(root string) (MigrationReport, manifest.Document, error) {
 			report.Diagnostics = append(report.Diagnostics, MigrationDiagnostic{Severity: "info", Code: "translated-tidy", File: rel, Task: "go:mod:tidy", Message: "stock go:mod:tidy ran before bindings and compilation; translated to build.tidy"})
 		}
 		if role == "linux" && reachability.contains(path, "package") && stockTask("package") {
-			report.Diagnostics = append(report.Diagnostics, MigrationDiagnostic{Severity: "info", Code: "package-formats-unrepresentable", File: rel, Task: "package", Message: "stock package builds appimage, deb, rpm and archlinux; the manifest has no setting for default Linux formats, so only appimage is configured"})
+			linuxFormats = true
+			report.Diagnostics = append(report.Diagnostics, MigrationDiagnostic{Severity: "info", Code: "translated-package-formats", File: rel, Task: "package", Message: "stock package builds appimage, deb, rpm and archlinux; translated to linux.formats"})
 		}
 		if role == "darwin" && reachability.contains(path, "package") && stockTask("package") {
 			report.Diagnostics = append(report.Diagnostics, MigrationDiagnostic{Severity: "info", Code: "darwin-dmg-default", File: rel, Task: "package", Message: "stock package creates only the .app bundle; wails3 package also emits a DMG by default"})
@@ -806,6 +808,9 @@ func analyseMigration(root string) (MigrationReport, manifest.Document, error) {
 	}
 	doc := manifest.NewDocument(project)
 	doc.Build.Tidy = buildTidy
+	if linuxFormats {
+		doc.Package.Linux.Formats = []string{"appimage", "deb", "rpm", "archlinux"}
+	}
 	doc.Hooks = migratedHooks
 	if buildOutput != "" {
 		doc.Build.OutputDirectory = buildOutput

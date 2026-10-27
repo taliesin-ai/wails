@@ -251,6 +251,9 @@ var schemaAttributeExamples = map[string]string{
 }
 
 func schemaDescription(path, name string) string {
+	if isPlatformFormatsPath(path) {
+		return "Package formats produced by `wails3 package` for this platform when no profile or --formats selects them; overrides the built-in default."
+	}
 	if path == "dev.args" || strings.HasSuffix(path, ".dev.args") {
 		return "Development application arguments passed without shell expansion; supported on desktop and iOS. Android requires an empty list."
 	}
@@ -263,7 +266,28 @@ func schemaDescription(path, name string) string {
 	return schemaAttributeDescriptions[name]
 }
 
+func isPlatformFormatsPath(path string) bool {
+	return platformFormatsExample(path) != ""
+}
+
+// platformFormatsExample returns the example for a top-level platform formats
+// field, or "" for any other path.
+func platformFormatsExample(path string) string {
+	switch path {
+	case "windows.formats":
+		return `["nsis"]`
+	case "linux.formats":
+		return `["appimage", "deb"]`
+	case "android.formats":
+		return `["aab"]`
+	}
+	return ""
+}
+
 func schemaExample(path, name string, destination reflect.Type, defaultText string) string {
+	if example := platformFormatsExample(path); example != "" {
+		return example
+	}
 	if path == "version" {
 		return "3"
 	}

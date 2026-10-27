@@ -193,6 +193,9 @@ func validateProject(project Project) error {
 }
 
 func validateConfig(config Config) error {
+	if err := validatePlatformFormats(config.Package); err != nil {
+		return err
+	}
 	if err := validateApplicationArgs("dev.args", config.Dev.Args); err != nil {
 		return err
 	}

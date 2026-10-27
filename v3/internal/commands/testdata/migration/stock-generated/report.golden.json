@@ -65,10 +65,10 @@
     },
     {
       "severity": "info",
-      "code": "package-formats-unrepresentable",
+      "code": "translated-package-formats",
       "file": "build/linux/Taskfile.yml",
       "task": "package",
-      "message": "stock package builds appimage, deb, rpm and archlinux; the manifest has no setting for default Linux formats, so only appimage is configured"
+      "message": "stock package builds appimage, deb, rpm and archlinux; translated to linux.formats"
     },
     {
       "severity": "info",
