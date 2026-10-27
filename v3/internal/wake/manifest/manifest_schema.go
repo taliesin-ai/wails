@@ -613,7 +613,7 @@ func applyPackage(packages *Packages, raw PackageFormat) error {
 	case "nsis":
 		packages.Windows.NSIS = NSISPackage{Template: raw.Template, InstallScope: raw.InstallScope}
 	case "msix":
-		packages.Windows.MSIX = MSIXPackage{Publisher: raw.Publisher, Manifest: raw.Manifest}
+		packages.Windows.MSIX = MSIXPackage{Publisher: raw.Publisher, Manifest: raw.Manifest, Tool: raw.Tool}
 	case "dmg":
 		packages.Darwin.DMG = DMGPackage{Template: raw.Template, Background: raw.Background, VolumeIcon: raw.VolumeIcon, FileIcon: raw.FileIcon, Files: cloneStringMapValue(raw.Files), WindowWidth: raw.WindowWidth, WindowHeight: raw.WindowHeight}
 	case "appimage":
@@ -655,7 +655,7 @@ func ResolvePackageFormat(packages Packages, platform, format string) (PackageFo
 		return PackageFormat{Template: value.Template, InstallScope: value.InstallScope}, nil
 	case "windows/msix":
 		value := packages.Windows.MSIX
-		return PackageFormat{Publisher: value.Publisher, Manifest: value.Manifest}, nil
+		return PackageFormat{Publisher: value.Publisher, Manifest: value.Manifest, Tool: value.Tool}, nil
 	case "darwin/app", "ios/app", "ios/ipa", "android/apk", "android/aab":
 		return PackageFormat{}, nil
 	case "darwin/dmg":
@@ -819,7 +819,7 @@ func packageAttributeAllowed(format, name string) bool {
 }
 
 func packageConfigured(format PackageFormat) bool {
-	return format.Template != "" || format.InstallScope != "" || format.Publisher != "" || format.Manifest != "" || format.Background != "" || format.VolumeIcon != "" || format.FileIcon != "" || len(format.Files) > 0 || format.WindowWidth != 0 || format.WindowHeight != 0 || format.Icon != "" || format.DesktopEntry != "" || len(format.Categories) > 0 || format.Maintainer != "" || format.Section != "" || len(format.Dependencies) > 0 || format.PreInstall != "" || format.PostInstall != "" || format.PreRemove != "" || format.PostRemove != ""
+	return format.Template != "" || format.InstallScope != "" || format.Publisher != "" || format.Manifest != "" || format.Tool != "" || format.Background != "" || format.VolumeIcon != "" || format.FileIcon != "" || len(format.Files) > 0 || format.WindowWidth != 0 || format.WindowHeight != 0 || format.Icon != "" || format.DesktopEntry != "" || len(format.Categories) > 0 || format.Maintainer != "" || format.Section != "" || len(format.Dependencies) > 0 || format.PreInstall != "" || format.PostInstall != "" || format.PreRemove != "" || format.PostRemove != ""
 }
 
 func platformConfigured(platform Platform) bool {

@@ -338,7 +338,7 @@ func encodeYAMLPackage(format string, value PackageFormat) *yaml.Node {
 	}
 	result := yamlMap()
 	for _, entry := range []struct{ key, value string }{
-		{"template", value.Template}, {"install_scope", value.InstallScope}, {"publisher", value.Publisher}, {"manifest", value.Manifest},
+		{"template", value.Template}, {"install_scope", value.InstallScope}, {"publisher", value.Publisher}, {"manifest", value.Manifest}, {"tool", value.Tool},
 		{"background", value.Background}, {"volume_icon", value.VolumeIcon}, {"file_icon", value.FileIcon}, {"icon", value.Icon},
 		{"desktop_entry", value.DesktopEntry}, {"maintainer", value.Maintainer}, {"section", value.Section},
 		{"pre_install", value.PreInstall}, {"post_install", value.PostInstall}, {"pre_remove", value.PreRemove}, {"post_remove", value.PostRemove},

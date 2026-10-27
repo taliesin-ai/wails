@@ -14,6 +14,7 @@ import (
 	"text/template"
 
 	"github.com/wailsapp/wails/v3/internal/flags"
+	"github.com/wailsapp/wails/v3/internal/wake/manifest"
 	"golang.org/x/image/draw"
 )
 
@@ -531,6 +532,25 @@ func InstallMSIXTools() error {
 
 	fmt.Println("MSIX packaging tools installation initiated. Please complete the installation process in the opened windows.")
 	return nil
+}
+
+// ToolMSIXInstallToolsOptions has no flags; it exists so msix-install-tools
+// can be registered like the other tool subcommands.
+type ToolMSIXInstallToolsOptions struct{}
+
+// ToolMSIXInstallTools is the `wails3 tool msix-install-tools` entry point.
+func ToolMSIXInstallTools(_ *ToolMSIXInstallToolsOptions) error {
+	DisableFooter = true
+	return InstallMSIXTools()
+}
+
+// msixPackagerOptions maps the packages.msix.tool manifest value onto the
+// packager selection flags of ToolMSIX. An empty value selects MakeAppx.
+func msixPackagerOptions(tool string) flags.ToolMSIX {
+	if tool == manifest.MSIXToolPackagingTool {
+		return flags.ToolMSIX{UseMsixPackagingTool: true}
+	}
+	return flags.ToolMSIX{UseMakeAppx: true}
 }
 
 // init registers the MSIX command

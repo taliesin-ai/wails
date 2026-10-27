@@ -846,6 +846,10 @@
             "publisher": {
               "description": "Windows package publisher identity.",
               "type": "string"
+            },
+            "tool": {
+              "description": "MSIX packager: makeappx (default) or msix-packaging-tool.",
+              "type": "string"
             }
           },
           "type": "object"

@@ -207,6 +207,7 @@ var schemaAttributeDescriptions = map[string]string{
 	"template":             "Complete user-owned package template replacement.",
 	"thumbprint":           "Windows certificate thumbprint.",
 	"time_type":            "TypeScript representation of Go time values.",
+	"tool":                 "MSIX packager: makeappx (default) or msix-packaging-tool.",
 	"timestamp_server":     "URL of the signing timestamp service.",
 	"toolchain":            "Compiler toolchain policy for this target.",
 	"trim_path":            "Remove local filesystem paths from production binaries.",
@@ -242,7 +243,7 @@ var schemaAttributeExamples = map[string]string{
 	"provisioning_profile": `"signing/app.mobileprovision"`, "publisher": `"CN=Example"`, "role": `"editor"`,
 	"section": `"utils"`, "template": `"packaging/package.tmpl"`, "thumbprint": `"0123456789ABCDEF"`,
 	"outputs": `["generated/version.go"]`, "script": `"scripts/generate-version.sh"`,
-	"time_type": `"string"`, "timestamp_server": `"https://timestamp.example.com"`, "toolchain": `"auto"`,
+	"time_type": `"string"`, "tool": `"makeappx"`, "timestamp_server": `"https://timestamp.example.com"`, "toolchain": `"auto"`,
 	"version_name": `"1.0.0"`, "volume_icon": `"assets/volume.icns"`,
 	"watch": `["**/*.go", "wails.yaml"]`,
 }

@@ -490,7 +490,7 @@ func TestEjectionCoversEveryPackageSchemaField(t *testing.T) {
 		t.Run(format, func(t *testing.T) {
 			doc := defaults(project)
 			raw := PackageFormat{
-				Format: format, InstallScope: "user", Publisher: "CN=Publisher", Manifest: "manifest",
+				Format: format, InstallScope: "user", Publisher: "CN=Publisher", Manifest: "manifest", Tool: MSIXToolPackagingTool,
 				Background: "background", VolumeIcon: "volume", FileIcon: "file", Files: map[string]string{"License": "LICENSE"},
 				WindowWidth: 640, WindowHeight: 480, Icon: "icon", DesktopEntry: "application.desktop",
 				Categories: []string{"Utility"}, Maintainer: "Maintainer", Section: "utils", Dependencies: []string{"dependency"},

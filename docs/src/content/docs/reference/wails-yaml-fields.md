@@ -156,6 +156,7 @@ Fields are listed using schema paths. Named maps use placeholders such as `targe
 | `packages["format"].publisher` | string | no |  | `"CN=Example"` | msix | Windows package publisher identity. |
 | `packages["format"].section` | string | no |  | `"utils"` | deb,rpm,archlinux | Linux package repository section. |
 | `packages["format"].template` | string | no |  | `"packaging/package.tmpl"` | nsis,dmg,deb,rpm,archlinux | Complete user-owned package template replacement. |
+| `packages["format"].tool` | string | no |  | `"makeappx"` | msix | MSIX packager: makeappx (default) or msix-packaging-tool. |
 | `packages["format"].volume_icon` | string | no |  | `"assets/volume.icns"` | dmg | User-owned DMG volume icon. |
 | `packages["format"].window_height` | integer | no |  | `1` | dmg | DMG Finder window height in pixels. |
 | `packages["format"].window_width` | integer | no |  | `1` | dmg | DMG Finder window width in pixels. |

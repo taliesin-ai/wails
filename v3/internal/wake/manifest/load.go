@@ -687,6 +687,9 @@ func validatePackageOptions(paths *projectPathValidator, name string, format Pac
 	if format.Template != "" && packageHasStructuredConfiguration(format) {
 		return fieldValidationError(manifestField, "cannot combine a complete template replacement with structured options")
 	}
+	if format.Tool != "" && format.Tool != MSIXToolMakeAppx && format.Tool != MSIXToolPackagingTool {
+		return fieldValidationError(manifestField+".tool", "must be %q or %q", MSIXToolMakeAppx, MSIXToolPackagingTool)
+	}
 	node := schemaNodesByType[reflect.TypeOf(PackageFormat{})]
 	value := reflect.ValueOf(format)
 	for _, attributeName := range node.attributeOrder {
