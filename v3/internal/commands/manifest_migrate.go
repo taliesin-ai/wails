@@ -45,14 +45,13 @@ type migrationCommandOperations struct {
 	getwd                func() (string, error)
 	activeManifestExists func(string) bool
 	stat                 func(string) (fs.FileInfo, error)
-	analyse              func(string) (MigrationReport, manifest.Document, error)
-	writeDraft           func(string, string, manifest.Document, []string) error
-	loadDraft            func(string, string, string) (*manifest.Loaded, error)
-	publishDraft         func(string, string) error
-	version              func() string
-	// generatedScripts returns the hook scripts the draft depends on. Nil means
-	// the operation writes no scripts.
-	generatedScripts func(string) ([]generatedHookScript, error)
+	// analyse returns the report, the draft document, and the hook scripts that
+	// the draft depends on, all from one analysis pass.
+	analyse      func(string) (MigrationReport, manifest.Document, []generatedHookScript, error)
+	writeDraft   func(string, string, manifest.Document, []string) error
+	loadDraft    func(string, string, string) (*manifest.Loaded, error)
+	publishDraft func(string, string) error
+	version      func() string
 }
 
 func productionMigrationCommandOperations() migrationCommandOperations {
@@ -60,17 +59,13 @@ func productionMigrationCommandOperations() migrationCommandOperations {
 		getwd:                os.Getwd,
 		activeManifestExists: manifest.Exists,
 		stat:                 os.Stat,
-		analyse:              analyseMigration,
+		analyse:              analyseMigrationWithScripts,
 		writeDraft:           manifest.WriteMigrationDraftAt,
 		loadDraft:            manifest.LoadFile,
 		publishDraft: func(draft, active string) error {
 			return activateMigrationDraft(draft, active, migrationActivationOperations{link: os.Link, remove: os.Remove})
 		},
 		version: version.String,
-		generatedScripts: func(root string) ([]generatedHookScript, error) {
-			_, _, scripts, err := analyseMigrationWithScripts(root)
-			return scripts, err
-		},
 	}
 }
 
@@ -100,7 +95,7 @@ func migrateWithOperations(options *MigrateOptions, operations migrationCommandO
 	} else if !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
-	report, doc, err := operations.analyse(root)
+	report, doc, scripts, err := operations.analyse(root)
 	if err != nil {
 		return err
 	}
@@ -110,19 +105,15 @@ func migrateWithOperations(options *MigrateOptions, operations migrationCommandO
 		}
 		report.Wrote = append(report.Wrote, relativeDraft)
 	}
-	var written, pending []string
-	if operations.generatedScripts != nil {
-		scripts, scriptsErr := operations.generatedScripts(root)
-		if scriptsErr != nil {
-			return scriptsErr
-		}
-		var writeErr error
-		written, pending, writeErr = writeGeneratedHookScripts(root, scripts, options.DryRun)
-		if writeErr != nil {
-			return writeErr
-		}
-		report.Wrote = append(report.Wrote, written...)
+	// Hook scripts accompany a draft written by this run. An existing draft is
+	// left unchanged, so scripts from the current analysis could disagree with
+	// it; those are reported as pending instead of written.
+	scriptsDryRun := options.DryRun || draftExists
+	written, pending, writeErr := writeGeneratedHookScripts(root, scripts, scriptsDryRun)
+	if writeErr != nil {
+		return writeErr
 	}
+	report.Wrote = append(report.Wrote, written...)
 	if options.JSON {
 		data, _ := json.MarshalIndent(report, "", "  ")
 		fmt.Println(string(data))
@@ -179,7 +170,7 @@ func activateMigrationWithOperations(root string, options *MigrateOptions, opera
 	if _, err := operations.loadDraft(root, draft, ""); err != nil {
 		return fmt.Errorf("validate %s: %w", relativeDraft, err)
 	}
-	report, _, err := operations.analyse(root)
+	report, _, _, err := operations.analyse(root)
 	if err != nil {
 		return err
 	}

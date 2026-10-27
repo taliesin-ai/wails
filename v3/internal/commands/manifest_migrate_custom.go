@@ -189,6 +189,10 @@ func (a *customBuildAdjustments) translateNativeBuild(taskfile, role string, act
 	check.Env = maps.Clone(expected.Env)
 	flagsChanged := !reflect.DeepEqual(expected.Vars["BUILD_FLAGS"], actual.Vars["BUILD_FLAGS"])
 	if flagsChanged {
+		// A task whose vars block was deleted has a nil map; writing to it panics.
+		if check.Vars == nil {
+			check.Vars = map[string]*wakeast.Var{}
+		}
 		check.Vars["BUILD_FLAGS"] = expected.Vars["BUILD_FLAGS"]
 	}
 	if !reflect.DeepEqual(check, expected) {

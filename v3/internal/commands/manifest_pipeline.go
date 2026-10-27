@@ -516,7 +516,10 @@ func (h *manifestHandler) Identity(ctx context.Context, node pipeline.Node) (str
 				tools = append(tools, path)
 			}
 		}
-		name := map[string]string{"nsis": "makensis", "msix": "MakeAppx.exe"}[spec.Format]
+		name := map[string]string{"nsis": "makensis"}[spec.Format]
+		if spec.Format == "msix" {
+			name = msixExecutableName(spec.Config.Tool)
+		}
 		if name != "" {
 			path, err := exec.LookPath(name)
 			if err != nil {
