@@ -43,7 +43,7 @@ func TestCapabilityRegistryOwnsProductionAndDevelopmentFormats(t *testing.T) {
 		assert.False(t, seen[format.Name], format.Name)
 		seen[format.Name] = true
 		assert.NotZero(t, format.Hosts, format.Name)
-		assert.NotEqual(t, format.Production, format.Development, format.Name)
+		assert.True(t, format.Production || format.Development, format.Name)
 		matched := false
 		for _, target := range buildinfo.TargetCapabilities() {
 			if target.Target.OS == format.Platform && target.SupportsFormat(format.Name, format.Development) {
@@ -64,14 +64,14 @@ func TestCapabilityRegistryOwnsProductionAndDevelopmentFormats(t *testing.T) {
 	assert.False(t, aab.Development)
 	apk, ok := lookupFormat("apk")
 	require.True(t, ok)
-	assert.False(t, apk.Production)
+	assert.True(t, apk.Production)
 	assert.True(t, apk.Development)
 	_, ok = lookupFormat("unknown")
 	assert.False(t, ok)
 
 	android, _ := lookupTarget("android", "arm64")
 	assert.True(t, android.SupportsFormat("aab", false))
-	assert.False(t, android.SupportsFormat("apk", false))
+	assert.True(t, android.SupportsFormat("apk", false))
 	assert.True(t, android.SupportsFormat("apk", true))
 	assert.False(t, android.SupportsFormat("aab", true))
 }

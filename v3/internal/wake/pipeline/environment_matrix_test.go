@@ -16,7 +16,7 @@ func TestExhaustiveProductionCapabilityMatrix(t *testing.T) {
 	}
 	hosts := []Target{{OS: "windows", Arch: "amd64"}, {OS: "darwin", Arch: "arm64"}, {OS: "linux", Arch: "amd64"}}
 	toolchains := []string{"auto", "native", "zig", "docker"}
-	allTools := []string{"go", "npm", "cc", "zig", "docker", "makensis", "MakeAppx.exe", "signtool.exe", "hdiutil", "xcrun", "codesign", "ditto", "zip", "java", "jarsigner", "apksigner", "dpkg-sig", "rpmsign"}
+	allTools := []string{"go", "npm", "cc", "zig", "docker", "makensis", "MakeAppx.exe", "signtool.exe", "hdiutil", "xcrun", "codesign", "ditto", "zip", "java", "jarsigner", "apksigner", "zipalign", "dpkg-sig", "rpmsign"}
 	facts := HostFacts{AndroidSDK: true, AndroidNDK: true, DockerImages: []string{"wails-cross"}, AppleSDKs: []string{"macosx", "iphoneos", "iphonesimulator"}}
 	cases := 0
 	for _, target := range buildinfo.TargetCapabilities() {

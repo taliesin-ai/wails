@@ -122,11 +122,16 @@ func currentHostCapabilitiesWithOperations(credentials []string, operations host
 }
 
 func probeHostToolsAndCredentials(credentials []string, operations hostProbeOperations) ([]string, []string) {
-	knownTools := []string{"go", "garble", "zig", "docker", "podman", "cc", "gcc", "clang", "npm", "pnpm", "yarn", "bun", "makensis", "MakeAppx.exe", "signtool.exe", "hdiutil", "xcrun", "codesign", "ditto", "zip", "java", "jarsigner", "apksigner", "dpkg-sig", "rpmsign"}
+	knownTools := []string{"go", "garble", "zig", "docker", "podman", "cc", "gcc", "clang", "npm", "pnpm", "yarn", "bun", "makensis", "MakeAppx.exe", "signtool.exe", "hdiutil", "xcrun", "codesign", "ditto", "zip", "java", "jarsigner", "apksigner", "zipalign", "dpkg-sig", "rpmsign"}
 	tools := make([]string, 0, len(knownTools))
 	for _, tool := range knownTools {
 		if _, err := operations.lookPath(tool); err == nil {
 			tools = append(tools, tool)
+		} else if tool == "apksigner" || tool == "zipalign" {
+			// SDK build-tools are usually not on PATH; resolve them from the SDK.
+			if _, ok := androidBuildToolPath(tool, operations.getenv, operations.lookPath, operations.glob); ok {
+				tools = append(tools, tool)
+			}
 		}
 	}
 	presentCredentials := make([]string, 0, len(credentials))
@@ -336,6 +341,11 @@ func PlanBuildForHost(config manifest.Config, request Request, host HostCapabili
 			}
 			if spec.TargetOS == "android" && !host.androidSDK {
 				return Plan{}, annotateHostConfigurationError(config, node, fmt.Errorf("%s requires an Android SDK", operation))
+			}
+			if spec.Format == "apk" && spec.Release && spec.DebugSign {
+				if err := requireHostTools(host, operation, "zipalign", "apksigner"); err != nil {
+					return Plan{}, annotateHostConfigurationError(config, node, err)
+				}
 			}
 		case SignArtifact:
 			if err := validateSigningHost(node.Spec.(SignSpec), host); err != nil {
@@ -597,11 +607,10 @@ func validateSigningHost(spec SignSpec, host HostCapabilities) error {
 		if !host.hasCredential(spec.Config.Credential) {
 			return hostConfigurationField("credential", fmt.Errorf("android signing credential %q is unavailable", spec.Config.Credential))
 		}
-		tool := "jarsigner"
 		if spec.Format == "apk" {
-			tool = "apksigner"
+			return hostConfigurationField("sign", requireHostTools(host, operation, "zipalign", "apksigner"))
 		}
-		return hostConfigurationField("sign", requireHostTools(host, operation, tool))
+		return hostConfigurationField("sign", requireHostTools(host, operation, "jarsigner"))
 	case "linux":
 		if spec.Config.Certificate == "" {
 			return hostConfigurationField("certificate", fmt.Errorf("linux signing requires signing.linux.certificate as the PGP key identifier"))

@@ -197,6 +197,9 @@ type Request struct {
 	sign        bool
 	notarize    bool
 	destination string
+	// mobileTag is the ios/android build tag when every target in the plan is
+	// the same mobile OS; empty otherwise.
+	mobileTag string
 }
 
 // NodeSpec is a closed set of typed planner data. It deliberately contains no
@@ -263,6 +266,11 @@ type PackageSpec struct {
 	Capabilities                                         []string
 	Associations                                         []manifest.Association
 	Protocols                                            []manifest.Protocol
+	// Release selects a Gradle release build (production Android APK).
+	Release bool
+	// DebugSign signs the release output with the Android debug keystore because
+	// no sign stage will sign it in this run. Such output is not for distribution.
+	DebugSign bool
 }
 type SignSpec struct {
 	TargetOS, TargetArch, Format, Input string

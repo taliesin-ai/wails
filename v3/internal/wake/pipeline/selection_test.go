@@ -57,13 +57,14 @@ func TestProfileAndAnonymousRequestsShareOutcomeSemantics(t *testing.T) {
 	assert.ErrorContains(t, err, "complete build request")
 }
 
-func TestProductionAndroidDefaultsToAABAndRejectsAPK(t *testing.T) {
+func TestProductionAndroidDefaultsToAABAndAcceptsAPK(t *testing.T) {
 	outcomes, err := resolveBuildOutcomes(manifest.Config{}, Request{Verb: "build", TargetOS: "android", TargetArch: "universal"})
 	require.NoError(t, err)
 	assert.Equal(t, []buildOutcome{{target: Target{OS: "android", Arch: "universal"}, formats: []string{"aab"}}}, outcomes)
 
-	_, err = resolveBuildOutcomes(manifest.Config{}, Request{Verb: "build", TargetOS: "android", TargetArch: "arm64", Formats: []string{"apk"}})
-	assert.ErrorContains(t, err, "production APK is no longer supported")
+	outcomes, err = resolveBuildOutcomes(manifest.Config{}, Request{Verb: "build", TargetOS: "android", TargetArch: "arm64", Formats: []string{"apk"}})
+	require.NoError(t, err)
+	assert.Equal(t, []buildOutcome{{target: Target{OS: "android", Arch: "arm64"}, formats: []string{"apk"}}}, outcomes)
 }
 
 func TestIOSProfileRequiresDestinationAndIPARequiresDevice(t *testing.T) {
@@ -119,7 +120,7 @@ func TestFormatAndTargetParsersCoverProductionAndDevelopmentFailures(t *testing.
 	_, err := resolveFormatsForTarget(linux, []string{"unknown"}, false)
 	assert.ErrorContains(t, err, "unknown package format")
 	_, err = resolveFormatsForTarget(linux, []string{"apk"}, false)
-	assert.ErrorContains(t, err, "production APK")
+	assert.ErrorContains(t, err, `"apk" is not supported for linux/amd64 in production`)
 	_, err = resolveFormatsForTarget(linux, []string{"apk"}, true)
 	assert.ErrorContains(t, err, "in development")
 	_, err = resolveFormatsForTarget(linux, []string{"deb", "deb"}, false)

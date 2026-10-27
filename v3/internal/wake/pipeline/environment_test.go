@@ -458,9 +458,10 @@ func TestSigningHostValidationCoversEveryPlatformContract(t *testing.T) {
 	android := manifest.SigningPlatform{Enabled: true, Certificate: "upload.jks", KeyAlias: "upload", Credential: "ANDROID_PASSWORD"}
 	assert.ErrorContains(t, validateSigningHost(SignSpec{TargetOS: "android", Format: "aab", Config: manifest.SigningPlatform{Enabled: true}}, testHost("linux", "amd64", "jarsigner")), "certificate, key_alias, and credential")
 	assert.ErrorContains(t, validateSigningHost(SignSpec{TargetOS: "android", Format: "aab", Config: android}, testHost("linux", "amd64", "jarsigner")), "credential")
-	androidHost := NewHostCapabilities("linux", "amd64", []string{"jarsigner", "apksigner"}, []string{"ANDROID_PASSWORD"})
+	androidHost := NewHostCapabilities("linux", "amd64", []string{"jarsigner", "apksigner", "zipalign"}, []string{"ANDROID_PASSWORD"})
 	assert.NoError(t, validateSigningHost(SignSpec{TargetOS: "android", Format: "aab", Config: android}, androidHost))
 	assert.NoError(t, validateSigningHost(SignSpec{TargetOS: "android", Format: "apk", Config: android}, androidHost))
+	assert.ErrorContains(t, validateSigningHost(SignSpec{TargetOS: "android", Format: "apk", Config: android}, NewHostCapabilities("linux", "amd64", []string{"jarsigner", "apksigner"}, []string{"ANDROID_PASSWORD"})), `requires tool "zipalign"`)
 
 	linux := manifest.SigningPlatform{Enabled: true, Certificate: "release@example.com"}
 	assert.NoError(t, validateSigningHost(SignSpec{TargetOS: "linux", Format: "rpm", Config: linux}, testHost("linux", "amd64", "rpmsign")))
