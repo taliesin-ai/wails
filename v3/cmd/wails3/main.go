@@ -244,6 +244,10 @@ func main() {
 	if features.WakeEnabled() {
 		ios.NewSubCommandFunction("devices", "List iOS simulators and connected physical devices", commands.IOSDevices)
 		ios.NewSubCommandFunction("logs", "Stream iOS Simulator logs filtered to this app", commands.IOSLogs)
+		iosXcode := ios.NewSubCommand("xcode", "Build and open a persistent Xcode project in .wails/ide/ios/xcode")
+		var iosXcodeOptions commands.IOSXcodeOptions
+		iosXcode.AddFlags(&iosXcodeOptions)
+		iosXcode.Action(func() error { return commands.IOSXcode(&iosXcodeOptions, iosXcode.OtherArgs()) })
 	}
 
 	// Android tools
@@ -256,6 +260,10 @@ func main() {
 		var androidRunOptions commands.AndroidRunOptions
 		androidRun.AddFlags(&androidRunOptions)
 		androidRun.Action(func() error { return commands.AndroidRun(&androidRunOptions, androidRun.OtherArgs()) })
+		androidStudio := android.NewSubCommand("studio", "Build and open a persistent Gradle project in .wails/ide/android")
+		var androidStudioOptions commands.AndroidStudioOptions
+		androidStudio.AddFlags(&androidStudioOptions)
+		androidStudio.Action(func() error { return commands.AndroidStudio(&androidStudioOptions, androidStudio.OtherArgs()) })
 	}
 
 	app.NewSubCommandFunction("version", "Print the version", commands.Version)
