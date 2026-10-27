@@ -38,6 +38,11 @@ type customCorpusExpect struct {
 	Manifest        map[string]any `json:"manifest"`
 	Activate        bool           `json:"activate"`
 	PlanNodes       []string       `json:"plan_nodes"`
+	// Verb selects the plan checked for PlanNodes; empty means build.
+	Verb string `json:"verb"`
+	// ScriptContains maps a generated script to fragments it must contain. A
+	// key ending in ":absent" lists fragments it must not contain.
+	ScriptContains map[string][]string `json:"script_contains"`
 	// KnownGap names a case whose translation is not implemented yet. Such a
 	// case is reported as skipped instead of failing the corpus.
 	KnownGap string `json:"known_gap"`
@@ -59,7 +64,7 @@ func TestCustomTaskfileCorpus(t *testing.T) {
 			passed++
 		}
 	}
-	require.Equal(t, 14, total, "corpus must contain every planned case")
+	require.Equal(t, 16, total, "corpus must contain every planned case")
 	t.Logf("custom corpus: %d/%d complete as expected", passed, total)
 }
 
@@ -122,9 +127,16 @@ func runCustomCorpusCase(t *testing.T, directory, name string) bool {
 				require.NoError(t, Migrate(&MigrateOptions{}))
 				require.NoError(t, Migrate(&MigrateOptions{Activate: true}))
 			})
+			for file, fragments := range expect.ScriptContains {
+				checkCustomCorpusScript(t, root, file, fragments)
+			}
 			loaded, err := manifest.Load(root, "")
 			require.NoError(t, err)
-			plan, err := pipeline.PlanBuild(loaded.Config, pipeline.Request{Verb: "build", TargetOS: "darwin", TargetArch: "arm64"})
+			verb := expect.Verb
+			if verb == "" {
+				verb = "build"
+			}
+			plan, err := pipeline.PlanBuild(loaded.Config, pipeline.Request{Verb: verb, TargetOS: "darwin", TargetArch: "arm64"})
 			require.NoError(t, err)
 			for _, node := range expect.PlanNodes {
 				_, ok := plan.Nodes[pipeline.NodeKey(node)]
@@ -133,6 +145,31 @@ func runCustomCorpusCase(t *testing.T, directory, name string) bool {
 		}
 	})
 	return passed && !gap
+}
+
+// checkCustomCorpusScript reads a generated hook script and checks fragments.
+// Scripts must be executable on POSIX hosts.
+func checkCustomCorpusScript(t *testing.T, root, file string, fragments []string) {
+	t.Helper()
+	absent := strings.HasSuffix(file, ":absent")
+	if absent {
+		file = strings.TrimSuffix(file, ":absent")
+	}
+	data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(file)))
+	require.NoError(t, err, "hook script %s was not generated", file)
+	for _, fragment := range fragments {
+		if absent {
+			assert.NotContains(t, string(data), fragment, file)
+		} else {
+			assert.Contains(t, string(data), fragment, file)
+		}
+	}
+	if !absent && !strings.HasPrefix(string(data), "#!/bin/sh\n") {
+		t.Errorf("%s must start with #!/bin/sh", file)
+	}
+	if info, err := os.Stat(filepath.Join(root, filepath.FromSlash(file))); err == nil && !absent && info.Mode().Perm()&0o100 == 0 {
+		t.Errorf("%s is not executable", file)
+	}
 }
 
 func readCustomCorpusJSON(t *testing.T, path string, target any) {

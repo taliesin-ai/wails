@@ -1,1 +1,1 @@
-{"complete": true, "manifest": {"frontend.build": ["npm", "run", "build:prod"]}, "activate": true, "plan_nodes": ["frontend:build"]}
+{"complete": true, "manifest": {"frontend.build": ["npm", "run", "build:prod"], "frontend.dev": ["npm", "run", "dev:hmr"]}, "codes": ["translated-custom-task"], "activate": true, "plan_nodes": ["frontend:build"]}

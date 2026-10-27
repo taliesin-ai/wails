@@ -1,0 +1,1 @@
+{"complete": false, "codes": ["dynamic-hook-command"], "message_contains": ["{{.FOO}}"]}

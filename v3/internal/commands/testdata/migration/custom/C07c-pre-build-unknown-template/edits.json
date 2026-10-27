@@ -1,0 +1,6 @@
+{"edits": [
+ {"file": "build/Taskfile.yml", "old": "  generate:icons:\n", "new": "  generate:version:\n    summary: Writes the version file\n    cmds:\n      - echo {{.FOO}} > foo.txt\n\n  generate:icons:\n"},
+ {"file": "build/darwin/Taskfile.yml", "old": "    summary: Builds the application natively on macOS\n    internal: true\n    deps:\n", "new": "    summary: Builds the application natively on macOS\n    internal: true\n    deps:\n      - task: common:generate:version\n"},
+ {"file": "build/windows/Taskfile.yml", "old": "    summary: Builds the application using native Go cross-compilation\n    internal: true\n    deps:\n", "new": "    summary: Builds the application using native Go cross-compilation\n    internal: true\n    deps:\n      - task: common:generate:version\n"},
+ {"file": "build/linux/Taskfile.yml", "old": "    summary: Builds the application natively on Linux\n    internal: true\n    deps:\n", "new": "    summary: Builds the application natively on Linux\n    internal: true\n    deps:\n      - task: common:generate:version\n"}
+]}

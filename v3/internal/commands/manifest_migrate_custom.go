@@ -1,7 +1,10 @@
 package commands
 
 import (
+	"bytes"
 	"maps"
+	"os"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	"sort"
@@ -21,6 +24,7 @@ var installScopeTasks = map[string]bool{"package": true, "create:nsis:installer"
 var (
 	installScopePattern     = regexp.MustCompile(`(default ")(machine|user)(")`)
 	frontendScriptPattern   = regexp.MustCompile(`(\{\{else\}\})(build[^{}]*)(\{\{end\}\})`)
+	frontendDevPattern      = regexp.MustCompile(`^(\S+(?: run)? )(\S+)( (?:-- )?--port \{\{\.VITE_PORT\}\} --strictPort)$`)
 	macOSVersionPattern     = regexp.MustCompile(`^(?:-mmacosx-version-min=)?([0-9][0-9.]*)$`)
 	templateVariablePattern = regexp.MustCompile(`\{\{\.?([A-Za-z_][A-Za-z0-9_]*)`)
 )
@@ -45,15 +49,37 @@ type customBuildAdjustments struct {
 	minimumVersion map[string]string
 	installScope   string
 	frontendScript string
+	// frontendDevScript is the dev script that replaces the stock dev command.
+	frontendDevScript string
+	// hooks holds the phases translated into hook scripts.
+	hooks map[string]plannedHook
+	// hookDependencies maps a platform build:native task to the extra
+	// dependency names that became a hook, so the task still matches stock.
+	hookDependencies map[string][]string
+	// consumedTasks marks tasks whose behaviour now lives in a hook.
+	consumedTasks map[string]bool
+	diagnostics   []MigrationDiagnostic
+	generated     []generatedHookScript
 }
 
 func newCustomBuildAdjustments() *customBuildAdjustments {
 	return &customBuildAdjustments{
-		tags:           map[string][]string{},
-		linkerFlags:    map[string][]string{},
-		environment:    map[string]map[string]string{},
-		minimumVersion: map[string]string{},
+		tags:             map[string][]string{},
+		linkerFlags:      map[string][]string{},
+		environment:      map[string]map[string]string{},
+		minimumVersion:   map[string]string{},
+		hooks:            map[string]plannedHook{},
+		hookDependencies: map[string][]string{},
+		consumedTasks:    map[string]bool{},
 	}
+}
+
+func (a *customBuildAdjustments) consume(taskfile, name string) {
+	a.consumedTasks[filepath.Clean(taskfile)+"\x00"+name] = true
+}
+
+func (a *customBuildAdjustments) isConsumed(taskfile, name string) bool {
+	return a.consumedTasks[filepath.Clean(taskfile)+"\x00"+name]
 }
 
 // normaliseRecognisedDefaults undoes the default values that translate can
@@ -75,22 +101,27 @@ func stockTaskNamed(role, name string) *wakeast.Task {
 	return nil
 }
 
-// translate attempts to express the customised task as manifest settings. It
-// never guesses: anything that is not an exact, recognised customisation blocks.
-func (a *customBuildAdjustments) translate(role, name string, actual, expected *wakeast.Task) customTaskOutcome {
+// translate attempts to express the customised task as manifest settings or
+// hook scripts. It never guesses: anything that is not an exact, recognised
+// customisation blocks with the reason.
+func (a *customBuildAdjustments) translate(taskfile, role, name string, actual, expected *wakeast.Task) customTaskOutcome {
 	if expected == nil {
 		return blockedCustomTask("task is not part of the stock definition")
 	}
 	switch {
 	case role == "common" && name == "build:frontend":
 		return a.translateFrontendScript(actual, expected)
+	case role == "common" && frontendDevTask[name]:
+		return a.translateFrontendDev(actual, expected)
 	case containsString(desktopRoles, role) && name == "build:native":
-		return a.translateNativeBuild(role, actual, expected)
+		return a.translateNativeBuild(taskfile, role, actual, expected)
 	case role == "windows" && installScopeTasks[name]:
 		return a.translateInstallScope(actual, expected)
 	}
 	return blockedCustomTask(describeTaskDifference(expected, actual))
 }
+
+var frontendDevTask = map[string]bool{"frontend:dev:npm": true, "frontend:dev:yarn": true, "frontend:dev:pnpm": true, "frontend:dev:bun": true}
 
 func blockedCustomTask(reason string) customTaskOutcome {
 	return customTaskOutcome{code: "modified-task", message: reason}
@@ -108,6 +139,21 @@ func (a *customBuildAdjustments) translateFrontendScript(actual, expected *wakea
 	return customTaskOutcome{translated: true, note: "frontend build script " + script}
 }
 
+// translateFrontendDev recognises the stock dev command with a different
+// script. The stock "-- --port ... --strictPort" suffix is left out because
+// wails adds the dev server arguments itself.
+func (a *customBuildAdjustments) translateFrontendDev(actual, expected *wakeast.Task) customTaskOutcome {
+	normalised, script, found := normaliseTaskCommand(actual, frontendDevPattern, "dev")
+	if !reflect.DeepEqual(normalised, expected) {
+		return blockedCustomTask(describeTaskDifference(expected, normalised))
+	}
+	if !found || script == "dev" {
+		return blockedCustomTask("frontend dev script is not recognised")
+	}
+	a.frontendDevScript = script
+	return customTaskOutcome{translated: true, note: "frontend dev script " + script}
+}
+
 func (a *customBuildAdjustments) translateInstallScope(actual, expected *wakeast.Task) customTaskOutcome {
 	normalised, scope, found := normaliseTaskVariable(actual, "INSTALL_SCOPE", installScopePattern, "machine")
 	if !reflect.DeepEqual(normalised, expected) {
@@ -123,7 +169,7 @@ func (a *customBuildAdjustments) translateInstallScope(actual, expected *wakeast
 	return customTaskOutcome{translated: true, note: "NSIS install scope " + scope}
 }
 
-func (a *customBuildAdjustments) translateNativeBuild(role string, actual, expected *wakeast.Task) customTaskOutcome {
+func (a *customBuildAdjustments) translateNativeBuild(taskfile, role string, actual, expected *wakeast.Task) customTaskOutcome {
 	changedEnv := map[string]string{}
 	for key, value := range actual.Env {
 		if expectedValue, ok := expected.Env[key]; !ok || expectedValue != value {
@@ -139,6 +185,7 @@ func (a *customBuildAdjustments) translateNativeBuild(role string, actual, expec
 	// Undo the recognised customisations, then require the rest to match the
 	// stock task exactly. Anything left over is an unrepresentable change.
 	check := cloneCustomTask(actual)
+	check.Deps = withoutDependencies(actual.Deps, a.hookDependencies[nativeKey(taskfile)])
 	check.Env = maps.Clone(expected.Env)
 	flagsChanged := !reflect.DeepEqual(expected.Vars["BUILD_FLAGS"], actual.Vars["BUILD_FLAGS"])
 	if flagsChanged {
@@ -168,6 +215,20 @@ func (a *customBuildAdjustments) translateNativeBuild(role string, actual, expec
 		a.environment[role] = changedEnv
 	}
 	return customTaskOutcome{translated: true, note: role + " build:native customisation"}
+}
+
+// withoutDependencies drops the dependencies that were translated to a hook.
+func withoutDependencies(deps []*wakeast.Dep, names []string) []*wakeast.Dep {
+	if len(names) == 0 {
+		return deps
+	}
+	var kept []*wakeast.Dep
+	for _, dep := range deps {
+		if dep == nil || !containsString(names, dep.Task) {
+			kept = append(kept, dep)
+		}
+	}
+	return kept
 }
 
 // translateBuildFlags turns the single inserted fragment of a BUILD_FLAGS
@@ -206,7 +267,7 @@ func (a *customBuildAdjustments) translateBuildFlags(role, expected, actual stri
 		a.linkerFlags[role] = append(a.linkerFlags[role], groupLinkerFlags(strings.Fields(trimmed))...)
 		return customTaskOutcome{translated: true, note: role + " linker flags"}
 	}
-	return blockedCustomTask("build flag change " + strings.TrimSpace(added) + " is not a recognised tag or linker flag")
+	return blockedCustomTask("build flag change " + trimmed + " is not a recognised tag or linker flag")
 }
 
 // groupLinkerFlags joins each flag with its value: "-X" "a=b" -> "-X a=b".
@@ -257,8 +318,10 @@ func macOSMinimumVersion(role string, changed map[string]string) (string, bool) 
 	return version, version != ""
 }
 
-// apply writes the collected translations into the migrated document.
-func (a *customBuildAdjustments) apply(doc *manifest.Document, report *MigrationReport) {
+// apply writes the collected translations into the migrated document. Hook
+// scripts are checked against files already on disk: identical content is
+// accepted, different content blocks, and no file is overwritten here.
+func (a *customBuildAdjustments) apply(doc *manifest.Document, report *MigrationReport, root string) {
 	applyPerDesktopList(&doc.Build.Go.Tags, &doc.Targets, a.tags, func(target *manifest.Target) *[]string { return &target.Tags })
 	applyPerDesktopList(&doc.Build.Go.LinkerFlags, &doc.Targets, a.linkerFlags, func(target *manifest.Target) *[]string { return &target.LinkerFlags })
 	applyPerDesktopEnvironment(doc, a.environment)
@@ -271,6 +334,59 @@ func (a *customBuildAdjustments) apply(doc *manifest.Document, report *Migration
 	if a.frontendScript != "" && len(doc.Frontend.Build) == 3 {
 		doc.Frontend.Build = []string{doc.Frontend.Build[0], "run", a.frontendScript}
 	}
+	if a.frontendDevScript != "" && len(doc.Frontend.Dev) >= 2 {
+		manager := doc.Frontend.Dev[0]
+		if len(doc.Frontend.Dev) == 3 {
+			doc.Frontend.Dev = []string{manager, "run", a.frontendDevScript}
+		} else {
+			doc.Frontend.Dev = []string{manager, a.frontendDevScript}
+		}
+	}
+	a.applyHooks(doc, report, root)
+	for _, diagnostic := range a.diagnostics {
+		report.Complete = false
+		report.Diagnostics = append(report.Diagnostics, diagnostic)
+	}
+}
+
+func (a *customBuildAdjustments) applyHooks(doc *manifest.Document, report *MigrationReport, root string) {
+	phases := make([]string, 0, len(a.hooks))
+	for phase := range a.hooks {
+		phases = append(phases, phase)
+	}
+	sort.Strings(phases)
+	for _, phase := range phases {
+		hook := a.hooks[phase]
+		scriptPath := "build/hooks/" + phase + ".sh"
+		content := renderHookScript(phase, hook)
+		hookPhase := manifest.HookPhase(phase)
+		if _, exists := doc.Hooks[hookPhase]; exists {
+			report.Complete = false
+			report.Diagnostics = append(report.Diagnostics, MigrationDiagnostic{Severity: "warning", Code: "duplicate-hook", File: scriptPath, Message: "custom " + phase + " steps conflict with an existing " + phase + " hook; choose one manually"})
+			continue
+		}
+		resolved, err := manifest.ResolveProjectPath(root, "hook script", scriptPath, false)
+		if err != nil {
+			report.Complete = false
+			report.Diagnostics = append(report.Diagnostics, MigrationDiagnostic{Severity: "warning", Code: "hook-script-exists", File: scriptPath, Message: err.Error()})
+			continue
+		}
+		if existing, readErr := os.ReadFile(resolved); readErr == nil && !bytes.Equal(existing, []byte(content)) {
+			report.Complete = false
+			report.Diagnostics = append(report.Diagnostics, MigrationDiagnostic{Severity: "warning", Code: "hook-script-exists", File: scriptPath, Message: "hook script " + scriptPath + " already exists with different content; move it or delete it before migrating"})
+			continue
+		}
+		doc.Hooks[hookPhase] = manifest.Hook{Script: scriptPath}
+		a.generated = append(a.generated, generatedHookScript{Phase: phase, Path: scriptPath, Content: content})
+		report.Diagnostics = append(report.Diagnostics,
+			MigrationDiagnostic{Severity: "info", Code: "translated-custom-hook", File: scriptPath, Message: "translated custom " + phase + " steps from " + strings.Join(hook.source, ", ") + " to hook " + scriptPath},
+			MigrationDiagnostic{Severity: "info", Code: "hook-posix-only", File: scriptPath, Message: "hook runs through a POSIX shell; the hook schema selects one script per phase, so Windows builds need a separate .cmd, .bat or .ps1 hook"})
+	}
+}
+
+// scripts returns the hook scripts that the draft depends on.
+func (a *customBuildAdjustments) scripts() []generatedHookScript {
+	return a.generated
 }
 
 // applyPerDesktopList places values at build level when all desktop platforms
@@ -361,6 +477,24 @@ func normaliseTaskVariable(task *wakeast.Task, key string, pattern *regexp.Regex
 	for _, command := range result.Cmds {
 		if command != nil {
 			rewrite(command.Vars[key])
+		}
+	}
+	return result, captured, found
+}
+
+// normaliseTaskCommand undoes a customised command line by the same three-group
+// rule as normaliseTaskVariable, applied to the command text itself.
+func normaliseTaskCommand(task *wakeast.Task, pattern *regexp.Regexp, canonical string) (*wakeast.Task, string, bool) {
+	result := cloneCustomTask(task)
+	captured := ""
+	found := false
+	for _, command := range result.Cmds {
+		if command == nil {
+			continue
+		}
+		if match := pattern.FindStringSubmatch(command.Cmd); match != nil {
+			captured, found = match[2], true
+			command.Cmd = pattern.ReplaceAllString(command.Cmd, "${1}"+canonical+"${3}")
 		}
 	}
 	return result, captured, found
