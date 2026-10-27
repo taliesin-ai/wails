@@ -167,6 +167,9 @@ func main() {
 	tool.NewSubCommandFunction("docker-mounts", "Generate Docker volume mount flags for cross-compilation", commands.ToolDockerMounts)
 	tool.NewSubCommandFunction("has", "Check if a tool is available in PATH (e.g. wails3 tool has git, wails3 tool has gcc|clang)", commands.ToolHas)
 	tool.NewSubCommandFunction("has-cc", "Deprecated: use 'wails3 tool has gcc|clang' instead", commands.ToolHasCC)
+	tool.NewSubCommandFunction("puppertino", "Vendor Puppertino CSS into the frontend and link it from index.html", commands.ToolPuppertino)
+	tool.NewSubCommandFunction("msix", "Create an MSIX package for Windows applications", commands.ToolMSIX)
+	tool.NewSubCommandFunction("msix-install-tools", "Install the tools required for MSIX packaging", commands.ToolMSIXInstallTools)
 
 	// Low-level sign tool (used by Taskfiles)
 	toolSign := tool.NewSubCommand("sign", "Sign a binary or package directly")

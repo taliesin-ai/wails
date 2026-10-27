@@ -278,9 +278,16 @@ type NSISPackage struct {
 	InstallScope string `json:"install_scope,omitempty"`
 }
 
+// MSIX packager values accepted by packages.msix.tool.
+const (
+	MSIXToolMakeAppx      = "makeappx"
+	MSIXToolPackagingTool = "msix-packaging-tool"
+)
+
 type MSIXPackage struct {
 	Publisher string `json:"publisher,omitempty"`
 	Manifest  string `json:"manifest,omitempty"`
+	Tool      string `json:"tool,omitempty"`
 }
 
 type DMGPackage struct {
@@ -316,6 +323,7 @@ type PackageFormat struct {
 	InstallScope string            `manifest:"install_scope,optional" formats:"nsis" json:"install_scope,omitempty"`
 	Publisher    string            `manifest:"publisher,optional" formats:"msix" json:"publisher,omitempty"`
 	Manifest     string            `manifest:"manifest,optional" formats:"msix" path:"true" json:"manifest,omitempty"`
+	Tool         string            `manifest:"tool,optional" formats:"msix" json:"tool,omitempty"`
 	Background   string            `manifest:"background,optional" formats:"dmg" path:"true" json:"background,omitempty"`
 	VolumeIcon   string            `manifest:"volume_icon,optional" formats:"dmg" path:"true" json:"volume_icon,omitempty"`
 	FileIcon     string            `manifest:"file_icon,optional" formats:"dmg" path:"true" json:"file_icon,omitempty"`

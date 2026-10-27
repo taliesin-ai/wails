@@ -2557,7 +2557,8 @@ func (h *manifestHandler) packageMSIX(s pipeline.PackageSpec) (pipeline.RunResul
 	if err := os.MkdirAll(filepath.Dir(generatedOutput), 0o755); err != nil {
 		return pipeline.RunResult{}, err
 	}
-	if err := ToolMSIX(&flags.ToolMSIX{ConfigPath: configPath, Publisher: publisher, Arch: arch, ExecutableName: s.Project.BinaryName + ".exe", ExecutablePath: filepath.Join(h.root, s.Binary), OutputPath: generatedOutput, AppxManifest: appxManifest, IconPath: filepath.Join(h.root, s.Assets, "appicon.png"), UseMakeAppx: true}); err != nil {
+	packager := msixPackagerOptions(s.Config.Tool)
+	if err := ToolMSIX(&flags.ToolMSIX{ConfigPath: configPath, Publisher: publisher, Arch: arch, ExecutableName: s.Project.BinaryName + ".exe", ExecutablePath: filepath.Join(h.root, s.Binary), OutputPath: generatedOutput, AppxManifest: appxManifest, IconPath: filepath.Join(h.root, s.Assets, "appicon.png"), UseMsixPackagingTool: packager.UseMsixPackagingTool, UseMakeAppx: packager.UseMakeAppx}); err != nil {
 		return pipeline.RunResult{}, err
 	}
 	return pipeline.RunResult{}, copyPathTransactional(generatedOutput, filepath.Join(h.root, s.Output), ".msix-output-*")
