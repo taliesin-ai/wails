@@ -42,6 +42,7 @@ type manifestRunOptions struct {
 	Formats                             []string
 	Environment                         []string
 	Development, Force, Obfuscated      bool
+	Server                              bool
 	Tags                                []string
 	GarbleArgs                          []string
 }
@@ -199,7 +200,7 @@ func resolveManifestPlanWithOperations(options manifestRunOptions, operations ma
 	if loaded.Config.Root != "" {
 		root = loaded.Config.Root
 	}
-	plan, err := operations.plan(loaded.Config, pipeline.Request{Verb: options.Verb, TargetOS: options.TargetOS, TargetArch: options.TargetArch, Targets: options.Targets, Formats: options.Formats, Development: options.Development, ExtraTags: options.Tags, GarbleArgs: options.GarbleArgs, Obfuscated: options.Obfuscated})
+	plan, err := operations.plan(loaded.Config, pipeline.Request{Verb: options.Verb, TargetOS: options.TargetOS, TargetArch: options.TargetArch, Targets: options.Targets, Formats: options.Formats, Development: options.Development, Server: options.Server, ExtraTags: options.Tags, GarbleArgs: options.GarbleArgs, Obfuscated: options.Obfuscated})
 	if err != nil {
 		return "", nil, pipeline.Plan{}, err
 	}
@@ -1000,7 +1001,7 @@ func (h *manifestHandler) compile(ctx context.Context, s pipeline.CompileSpec) (
 	}
 	output := filepath.Join(h.root, filepath.FromSlash(s.Output))
 	tool, args := compileGoArgs(s)
-	if s.TargetOS == "windows" {
+	if s.TargetOS == "windows" && !s.Server {
 		overlay, err := h.windowsResourceOverlay(s)
 		if err != nil {
 			return pipeline.RunResult{}, err
@@ -1013,7 +1014,7 @@ func (h *manifestHandler) compile(ctx context.Context, s pipeline.CompileSpec) (
 	// even when both architectures use the native macOS toolchain. Wails'
 	// Darwin implementation is CGo-backed, so Intel builds on Apple Silicon
 	// (and the amd64 half of universal builds) must enable it explicitly.
-	if s.TargetOS == "darwin" {
+	if s.TargetOS == "darwin" && !s.Server {
 		env = append(env, "CGO_ENABLED=1")
 	}
 	if s.Toolchain == "zig" {

@@ -451,7 +451,7 @@ func validateCompileEnvironment(spec CompileSpec, host HostCapabilities) error {
 		}
 		return hostConfigurationField(field, err)
 	}
-	if spec.TargetOS == "linux" && spec.Toolchain == "native" && !host.hasTool("cc") && !host.hasTool("gcc") && !host.hasTool("clang") {
+	if spec.TargetOS == "linux" && spec.Toolchain == "native" && !spec.Server && !host.hasTool("cc") && !host.hasTool("gcc") && !host.hasTool("clang") {
 		return hostConfigurationField("toolchain", fmt.Errorf("%s with the native toolchain requires a C compiler (cc, gcc, or clang)", operation))
 	}
 	if spec.TargetOS == "android" {
@@ -484,6 +484,11 @@ func (h HostCapabilities) crossContainerImage() string {
 }
 
 func resolveToolchain(spec CompileSpec, host HostCapabilities) (string, error) {
+	if spec.Server {
+		// Server binaries compile with CGO disabled, so plain Go cross-compiles
+		// every desktop target without zig, Docker or Podman.
+		return "native", nil
+	}
 	target := spec.TargetOS + "/" + spec.TargetArch
 	requested := spec.Toolchain
 	if requested == "" {

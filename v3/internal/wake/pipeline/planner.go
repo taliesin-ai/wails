@@ -18,6 +18,11 @@ func PlanBuild(config manifest.Config, request Request) (Plan, error) {
 	if request.Verb == "" {
 		request.Verb = "build"
 	}
+	if request.Server {
+		if err := validateServerRequest(config, request); err != nil {
+			return Plan{}, err
+		}
+	}
 	outcomes, err := resolveBuildOutcomes(config, request)
 	if err != nil {
 		if config.Selected.Name != "" {
@@ -88,6 +93,62 @@ func PlanBuild(config manifest.Config, request Request) (Plan, error) {
 	return combined, combined.Validate(config.Root)
 }
 
+// validateServerRequest rejects request combinations that have no meaning for a
+// server-mode binary: packages, signing, named profiles and non-build verbs.
+func validateServerRequest(config manifest.Config, request Request) error {
+	switch {
+	case config.Selected.Name != "":
+		return fmt.Errorf("server builds cannot be combined with profile %q", config.Selected.Name)
+	case len(request.Formats) > 0:
+		return fmt.Errorf("server builds produce a plain binary; --formats does not apply")
+	case request.Verb != "build" && request.Verb != "run":
+		return fmt.Errorf("server builds support only the build and run commands, not %q", request.Verb)
+	}
+	return nil
+}
+
+// serverEnvironment returns the environment for a server compile. Pure-Go
+// server binaries default to CGO_ENABLED=0; a manifest environment map (target
+// settings replace build settings, as for every compile) may still override it.
+func serverEnvironment(build, target map[string]string) map[string]string {
+	environment := cloneStringMap(build)
+	if target != nil {
+		environment = cloneStringMap(target)
+	}
+	if _, declared := environment["CGO_ENABLED"]; !declared {
+		if environment == nil {
+			environment = map[string]string{}
+		}
+		environment["CGO_ENABLED"] = "0"
+	}
+	return environment
+}
+
+// withoutWindowsGUILinkFlag removes "-H windowsgui" from linker flags. That flag
+// links a Windows program as a GUI-subsystem binary with no console, which a
+// server binary must never be; the Taskfile build:server task never sets it.
+func withoutWindowsGUILinkFlag(flags []string) []string {
+	result := make([]string, 0, len(flags))
+	for index := 0; index < len(flags); index++ {
+		flag := flags[index]
+		if strings.TrimSpace(flag) == "-H" && index+1 < len(flags) && strings.TrimSpace(flags[index+1]) == "windowsgui" {
+			index++
+			continue
+		}
+		if t := strings.TrimSpace(flag); t == "-H=windowsgui" || t == "-Hwindowsgui" {
+			continue
+		}
+		if strings.Contains(flag, "-H windowsgui") {
+			flag = strings.TrimSpace(strings.ReplaceAll(flag, "-H windowsgui", ""))
+			if flag == "" {
+				continue
+			}
+		}
+		result = append(result, flag)
+	}
+	return result
+}
+
 func addPlanNodes(combined *Plan, child Plan) error {
 	for key, node := range child.Nodes {
 		if existing, ok := combined.Nodes[key]; ok {
@@ -140,6 +201,14 @@ func planTarget(config manifest.Config, request Request, multiTarget bool) (Plan
 	if !supported {
 		return Plan{}, unsupportedTargetError(request.TargetOS, request.TargetArch)
 	}
+	if request.Server {
+		if request.TargetOS == "ios" || request.TargetOS == "android" {
+			return Plan{}, fmt.Errorf("server builds are desktop-only; %s/%s is not supported", request.TargetOS, request.TargetArch)
+		}
+		if capability.Synthetic() {
+			return Plan{}, fmt.Errorf("server builds do not support universal targets; request the architectures separately")
+		}
+	}
 
 	profileName := config.Profile
 	if profileName == "" {
@@ -147,6 +216,10 @@ func planTarget(config manifest.Config, request Request, multiTarget bool) (Plan
 	}
 	target := request.TargetOS + "/" + request.TargetArch
 	project, targetSettings := effectiveTarget(config, request.TargetOS, request.TargetArch)
+	if request.Server {
+		// Server binaries are pure Go: they never need zig, Docker or a C compiler.
+		targetSettings.Toolchain = "native"
+	}
 	destination := request.destination
 	if request.TargetOS == "ios" && destination == "" {
 		destination = "simulator"
@@ -165,9 +238,14 @@ func planTarget(config manifest.Config, request Request, multiTarget bool) (Plan
 	}
 	assetsOut := filepath.ToSlash(filepath.Join(generatedRoot, "assets"))
 	binaryName := config.Project.BinaryName
+	if request.Server {
+		binaryName += "-server"
+	}
 	if capability.Runnable == runnableBinary {
 		binaryName += capability.RunnableSuffix
 	}
+	// Server builds are plain binaries even on platforms whose GUI builds are app bundles.
+	appBundle := capability.Runnable == runnableApp && !request.Server
 	finalBinaryDirectory := config.Build.OutputDirectory
 	if request.Development {
 		finalBinaryDirectory = generatedRoot
@@ -244,6 +322,9 @@ func planTarget(config manifest.Config, request Request, multiTarget bool) (Plan
 			Inputs: []InputSpec{{Label: "frontend-install", Files: frontendInstallFiles(config)}}, Marker: filepath.ToSlash(filepath.Join(config.Frontend.Directory, "node_modules")), Cache: CacheReceipt, Claims: ResourceClaims{CPU: 1, MemoryMB: 512}, EstimateMS: 1800})
 	}
 	var tags []string
+	if request.Server {
+		tags = append(tags, "server")
+	}
 	if request.Development {
 		tags = appendUnique(tags, config.Dev.Tags...)
 		tags = appendUnique(tags, request.ExtraTags...)
@@ -316,7 +397,7 @@ func planTarget(config manifest.Config, request Request, multiTarget bool) (Plan
 			Output: frontendOut, Cache: CacheArtifact, Claims: ResourceClaims{CPU: 2, MemoryMB: 1024}, EstimateMS: 900})
 	}
 	var assets NodeKey
-	if request.TargetOS == "windows" || request.TargetOS == "ios" || request.TargetOS == "android" {
+	if !request.Server && (request.TargetOS == "windows" || request.TargetOS == "ios" || request.TargetOS == "android") {
 		assets = add(platformAssetsNode(config, request, target, assetsOut, projectHookDeps))
 	}
 
@@ -360,6 +441,19 @@ func planTarget(config manifest.Config, request Request, multiTarget bool) (Plan
 		environment = nil
 		trimPath, strip = false, false
 	}
+	assetsForCompile := assetsOut
+	if request.Server {
+		// Mirrors the Taskfile build:server flags: a development server keeps
+		// symbols and disables inlining; production trims paths and strips.
+		environment = serverEnvironment(config.Build.Environment, targetSettings.Environment)
+		linkerFlags = withoutWindowsGUILinkFlag(linkerFlags)
+		if request.Development {
+			compilerFlags = []string{"all=-l"}
+		} else {
+			trimPath, strip = true, true
+		}
+		assetsForCompile = ""
+	}
 	compileTargets := []Target{{OS: request.TargetOS, Arch: request.TargetArch}}
 	if capability.Synthetic() {
 		compileTargets = make([]Target, int(capability.ComponentCount))
@@ -380,7 +474,7 @@ func planTarget(config manifest.Config, request Request, multiTarget bool) (Plan
 			}
 		}
 		compileKey := add(Node{Key: NodeKey("target:" + compileTargetName + ":compile"), Kind: CompileApplication, Label: "Compile " + compileTargetName, Scope: TargetScope, Dependencies: compileDeps,
-			Spec:   CompileSpec{TargetOS: compileTarget.OS, TargetArch: compileTarget.Arch, Output: compileOutput, Assets: assetsOut, Destination: destination, MinimumVersion: targetSettings.MinimumVersion, Tags: append([]string(nil), tags...), LinkerFlags: append([]string(nil), linkerFlags...), CompilerFlags: append([]string(nil), compilerFlags...), GarbleArgs: append([]string(nil), garbleArgs...), LocalRoots: append([]string(nil), localRoots...), Production: !request.Development, Obfuscated: obfuscated, TrimPath: trimPath, Strip: strip, VCSInfo: config.Build.VCSInfo && !request.Development, Toolchain: targetSettings.Toolchain, Environment: cloneStringMap(environment)},
+			Spec:   CompileSpec{TargetOS: compileTarget.OS, TargetArch: compileTarget.Arch, Output: compileOutput, Assets: assetsForCompile, Destination: destination, MinimumVersion: targetSettings.MinimumVersion, Tags: append([]string(nil), tags...), LinkerFlags: append([]string(nil), linkerFlags...), CompilerFlags: append([]string(nil), compilerFlags...), GarbleArgs: append([]string(nil), garbleArgs...), LocalRoots: append([]string(nil), localRoots...), Production: !request.Development, Obfuscated: obfuscated, TrimPath: trimPath, Strip: strip, VCSInfo: config.Build.VCSInfo && !request.Development && !request.Server, Toolchain: targetSettings.Toolchain, Environment: cloneStringMap(environment), Server: request.Server},
 			Inputs: compileInputs,
 			Output: compileOutput, Cache: CacheArtifact, Claims: ResourceClaims{CPU: max(1, runtime.GOMAXPROCS(0)/2), MemoryMB: 2048}, EstimateMS: 1500, Artifact: ArtifactIdentity{Kind: ArtifactBinary, Target: Target{OS: compileTarget.OS, Arch: compileTarget.Arch}}})
 		compileRoots = append(compileRoots, compileKey)
@@ -408,7 +502,7 @@ func planTarget(config manifest.Config, request Request, multiTarget bool) (Plan
 		buildBarrier = []NodeKey{afterBuild}
 	}
 	lastRunnable := lastBuild
-	if capability.Runnable == runnableApp {
+	if appBundle {
 		assemblyDependencies := append([]NodeKey(nil), buildBarrier...)
 		if assets == "" {
 			assets = add(platformAssetsNode(config, request, target, assetsOut, projectHookDeps))
@@ -434,11 +528,11 @@ func planTarget(config manifest.Config, request Request, multiTarget bool) (Plan
 		if !request.sign {
 			if !request.Development {
 				destination := finalBinaryOut
-				if capability.Runnable == runnableApp {
+				if appBundle {
 					destination = runnableOutput(config, request.TargetOS, request.TargetArch, capability, multiTarget)
 				}
 				published := publish(lastRunnable, destination)
-				if afterBuild != "" && capability.Runnable != runnableApp {
+				if afterBuild != "" && !appBundle {
 					node := plan.Nodes[published]
 					node.Dependencies = appendUniqueKeys(node.Dependencies, afterBuild)
 					taintCacheAfterAlwaysRunHook(plan, &node)
@@ -448,7 +542,7 @@ func planTarget(config manifest.Config, request Request, multiTarget bool) (Plan
 			}
 			plan.Artifacts = []NodeKey{lastRunnable}
 			plan.Roots = []NodeKey{lastRunnable}
-			if request.Development && afterBuild != "" && capability.Runnable != runnableApp {
+			if request.Development && afterBuild != "" && !appBundle {
 				plan.Roots = []NodeKey{afterBuild}
 				plan.Artifacts = []NodeKey{lastRunnable}
 			}
@@ -466,7 +560,7 @@ func planTarget(config manifest.Config, request Request, multiTarget bool) (Plan
 		afterSign := hookNode(manifest.AfterSign, TargetScope, plan.Nodes[signed].Output, []NodeKey{signed})
 		if !request.Development {
 			destination := finalBinaryOut
-			if capability.Runnable == runnableApp {
+			if appBundle {
 				destination = runnableOutput(config, request.TargetOS, request.TargetArch, capability, multiTarget)
 			}
 			published := publish(signed, signedPublicationPath(destination, request.TargetOS))
@@ -487,11 +581,11 @@ func planTarget(config manifest.Config, request Request, multiTarget bool) (Plan
 		return plan, plan.Validate(config.Root)
 	}
 	packageDependencies := buildDependencies
-	if capability.Runnable == runnableApp {
+	if appBundle {
 		packageDependencies = []NodeKey{lastRunnable}
 	}
 	beforePackageDeps := append([]NodeKey(nil), buildBarrier...)
-	if capability.Runnable == runnableApp {
+	if appBundle {
 		beforePackageDeps = []NodeKey{lastRunnable}
 	}
 	for _, format := range formats {

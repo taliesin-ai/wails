@@ -31,6 +31,7 @@ type RunOptions struct {
 	Tags   string `name:"tags" description:"Additional comma-separated Go build tags"`
 	Target string `name:"target" description:"One platform/architecture to run (defaults to the host)"`
 	Plan   bool   `name:"plan" description:"Show resolved build and launch settings without executing"`
+	Server bool   `name:"server" description:"Build and run the development server-mode binary (Go tag server, no GUI)"`
 }
 
 // RunApplication builds and launches the local application. Absence of a
@@ -81,6 +82,9 @@ func RunApplication(options *RunOptions, args []string) (resultErr error) {
 		}
 		if options.Target != "" && options.Target != runtime.GOOS+"/"+runtime.GOARCH {
 			return fmt.Errorf("go run fallback only supports the host target")
+		}
+		if options.Server {
+			return fmt.Errorf("--server requires a wails.yaml project")
 		}
 		goArgs := []string{"run"}
 		if options.Tags != "" {
@@ -137,6 +141,11 @@ func RunApplication(options *RunOptions, args []string) (resultErr error) {
 	if err := configureRunTarget(options, goos, arch, settings, &build); err != nil {
 		return err
 	}
+	if options.Server {
+		if err := configureServerRun(goos, &build); err != nil {
+			return err
+		}
+	}
 	_, _, plan, err := resolveManifestPlan(build)
 	if err != nil {
 		return err
@@ -159,12 +168,23 @@ func RunApplication(options *RunOptions, args []string) (resultErr error) {
 	if _, err := runManifestPipelineResult(build); err != nil {
 		return err
 	}
-	if goos == "darwin" {
+	if goos == "darwin" && !options.Server {
 		if err := registerRunBundle(ctx, root, executable, runManifestTool); err != nil {
 			return err
 		}
 	}
 	return runApplicationProcess(ctx, root, executable, settings.Args, declaredEnvironment(nil, settings.Environment))
+}
+
+// configureServerRun selects the development server build that run --server
+// executes. It uses the same development policy as the Taskfile run:server task.
+func configureServerRun(goos string, build *manifestRunOptions) error {
+	if goos == "android" || goos == "ios" {
+		return fmt.Errorf("--server is only valid for desktop targets")
+	}
+	build.Server = true
+	build.Development = true
+	return nil
 }
 
 func runArtifactPath(root string, plan pipeline.Plan, goos, binary string) (string, error) {

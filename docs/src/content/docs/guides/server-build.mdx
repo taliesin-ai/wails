@@ -216,6 +216,25 @@ This allows code that references windows to run without crashing, though window 
 
 ## Building for Production
 
+### With the wake build system
+
+Projects that use a `wails.yaml` manifest (with `WAILS_EXP_USE_WAKE=1`) build server mode with the CLI instead of Taskfile tasks:
+
+```bash
+# Production server binary: bin/<name>-server (per-target subdirectories for several targets)
+wails3 build --server
+wails3 build --server --targets linux/amd64,windows/amd64
+
+# Development server build, then run it in the foreground
+wails3 run --server
+
+# Docker image: builds the frontend, then runs docker build
+wails3 server docker
+wails3 server docker -tag myapp:v1.0.0 -run -port 3000
+```
+
+Server builds compile with `CGO_ENABLED=0` by default, so they need no C compiler, zig or Docker to cross-compile. `wails3 server docker` uses `build/docker/Dockerfile.server` when your project has one. Otherwise it writes the built-in template to `.wails/docker/Dockerfile.server`.
+
 ### Using Task (Recommended)
 
 Projects created with `wails3 init` include a `build:server` task:

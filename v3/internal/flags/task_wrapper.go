@@ -11,6 +11,7 @@ type Build struct {
 	Force      bool   `name:"force" description:"Ignore Wake cache entries"`
 	Plan       bool   `name:"plan" description:"Validate and print the resolved build plan without changing files"`
 	JSON       bool   `name:"json" description:"Emit plan output as JSON (requires --plan)"`
+	Server     bool   `name:"server" description:"Build a server-mode binary (Go tag server, no GUI) named <binary>-server"`
 }
 
 type Dev struct {
