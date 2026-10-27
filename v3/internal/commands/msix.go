@@ -575,6 +575,15 @@ func msixPackagerOptions(tool string) flags.ToolMSIX {
 	return flags.ToolMSIX{UseMakeAppx: true}
 }
 
+// msixExecutableName is the packager executable that the selected tool runs,
+// so the pipeline's tool identity and the invocation always name the same file.
+func msixExecutableName(tool string) string {
+	if msixPackagerOptions(tool).UseMsixPackagingTool {
+		return "MsixPackagingTool.exe"
+	}
+	return "MakeAppx.exe"
+}
+
 // init registers the MSIX command
 func init() {
 	// Register the MSIX command in the CLI

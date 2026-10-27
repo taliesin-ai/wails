@@ -72,11 +72,13 @@ func TestMigrateCommandBoundaryFailuresAreObservable(t *testing.T) {
 		getwd:                func() (string, error) { return root, nil },
 		activeManifestExists: func(string) bool { return false },
 		stat:                 func(string) (fs.FileInfo, error) { return nil, fs.ErrNotExist },
-		analyse:              func(string) (MigrationReport, manifest.Document, error) { return complete, document, nil },
-		writeDraft:           func(string, string, manifest.Document, []string) error { return nil },
-		loadDraft:            func(string, string, string) (*manifest.Loaded, error) { return &manifest.Loaded{}, nil },
-		publishDraft:         func(string, string) error { return nil },
-		version:              func() string { return "v3.test" },
+		analyse: func(string) (MigrationReport, manifest.Document, []generatedHookScript, error) {
+			return complete, document, nil, nil
+		},
+		writeDraft:   func(string, string, manifest.Document, []string) error { return nil },
+		loadDraft:    func(string, string, string) (*manifest.Loaded, error) { return &manifest.Loaded{}, nil },
+		publishDraft: func(string, string) error { return nil },
+		version:      func() string { return "v3.test" },
 	}
 
 	for _, test := range []struct {
@@ -94,8 +96,8 @@ func TestMigrateCommandBoundaryFailuresAreObservable(t *testing.T) {
 			ops.stat = func(string) (fs.FileInfo, error) { return nil, injected }
 		}},
 		{name: "analysis", mutate: func(ops *migrationCommandOperations) {
-			ops.analyse = func(string) (MigrationReport, manifest.Document, error) {
-				return MigrationReport{}, manifest.Document{}, injected
+			ops.analyse = func(string) (MigrationReport, manifest.Document, []generatedHookScript, error) {
+				return MigrationReport{}, manifest.Document{}, nil, injected
 			}
 		}},
 		{name: "draft write", mutate: func(ops *migrationCommandOperations) {
@@ -105,8 +107,8 @@ func TestMigrateCommandBoundaryFailuresAreObservable(t *testing.T) {
 			ops.loadDraft = func(string, string, string) (*manifest.Loaded, error) { return nil, injected }
 		}},
 		{name: "activation analysis", options: MigrateOptions{Activate: true}, mutate: func(ops *migrationCommandOperations) {
-			ops.analyse = func(string) (MigrationReport, manifest.Document, error) {
-				return MigrationReport{}, manifest.Document{}, injected
+			ops.analyse = func(string) (MigrationReport, manifest.Document, []generatedHookScript, error) {
+				return MigrationReport{}, manifest.Document{}, nil, injected
 			}
 		}},
 		{name: "activation publication", options: MigrateOptions{Activate: true}, mutate: func(ops *migrationCommandOperations) {
@@ -133,11 +135,13 @@ func TestMigrateCommandOutcomeBranchesAreObservable(t *testing.T) {
 		getwd:                func() (string, error) { return root, nil },
 		activeManifestExists: func(string) bool { return false },
 		stat:                 func(string) (fs.FileInfo, error) { return nil, fs.ErrNotExist },
-		analyse:              func(string) (MigrationReport, manifest.Document, error) { return complete, document, nil },
-		writeDraft:           func(string, string, manifest.Document, []string) error { return nil },
-		loadDraft:            func(string, string, string) (*manifest.Loaded, error) { return &manifest.Loaded{}, nil },
-		publishDraft:         func(string, string) error { return nil },
-		version:              func() string { return "v3.test" },
+		analyse: func(string) (MigrationReport, manifest.Document, []generatedHookScript, error) {
+			return complete, document, nil, nil
+		},
+		writeDraft:   func(string, string, manifest.Document, []string) error { return nil },
+		loadDraft:    func(string, string, string) (*manifest.Loaded, error) { return &manifest.Loaded{}, nil },
+		publishDraft: func(string, string) error { return nil },
+		version:      func() string { return "v3.test" },
 	}
 
 	t.Run("invalid migration output", func(t *testing.T) {
@@ -147,7 +151,7 @@ func TestMigrateCommandOutcomeBranchesAreObservable(t *testing.T) {
 
 	t.Run("incomplete dry run text", func(t *testing.T) {
 		operations := base
-		operations.analyse = func(string) (MigrationReport, manifest.Document, error) {
+		operations.analyse = func(string) (MigrationReport, manifest.Document, []generatedHookScript, error) {
 			return MigrationReport{
 				Version: 1,
 				Sources: map[string]string{"Taskfile.yml": "digest"},
@@ -157,7 +161,7 @@ func TestMigrateCommandOutcomeBranchesAreObservable(t *testing.T) {
 					Task:     "custom",
 					Message:  "manual change required",
 				}},
-			}, document, nil
+			}, document, nil, nil
 		}
 		output := captureMigrationStdout(t, func() {
 			require.NoError(t, migrateWithOperations(&MigrateOptions{DryRun: true}, operations))
@@ -174,8 +178,8 @@ func TestMigrateCommandOutcomeBranchesAreObservable(t *testing.T) {
 
 	t.Run("incomplete activation JSON", func(t *testing.T) {
 		operations := base
-		operations.analyse = func(string) (MigrationReport, manifest.Document, error) {
-			return MigrationReport{Version: 1, Complete: false}, document, nil
+		operations.analyse = func(string) (MigrationReport, manifest.Document, []generatedHookScript, error) {
+			return MigrationReport{Version: 1, Complete: false}, document, nil, nil
 		}
 		var activationErr error
 		output := captureMigrationStdout(t, func() {
