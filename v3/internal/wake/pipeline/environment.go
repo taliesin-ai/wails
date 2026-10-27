@@ -132,6 +132,11 @@ func probeHostToolsAndCredentials(credentials []string, operations hostProbeOper
 			if _, ok := androidBuildToolPath(tool, operations.hostOS, operations.getenv, operations.lookPath, operations.glob); ok {
 				tools = append(tools, tool)
 			}
+		} else if tool == "makensis" || tool == "MakeAppx.exe" || tool == "signtool.exe" {
+			// NSIS and the Windows SDK are usually not on PATH; resolve them from the standard install locations.
+			if _, ok := windowsToolPath(tool, operations.hostOS, operations.hostArch, operations.getenv, operations.lookPath, operations.stat, operations.glob); ok {
+				tools = append(tools, tool)
+			}
 		}
 	}
 	presentCredentials := make([]string, 0, len(credentials))

@@ -749,7 +749,7 @@ func validatePackageOptions(paths *projectPathValidator, name string, format Pac
 			}
 		}
 	}
-	return nil
+	return validateMSIXPublisherAgainstManifest(paths.root, manifestField, format)
 }
 
 func packageHasStructuredConfiguration(format PackageFormat) bool {
