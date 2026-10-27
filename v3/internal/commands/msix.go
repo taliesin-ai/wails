@@ -98,12 +98,17 @@ func ToolMSIX(options *flags.ToolMSIX) error {
 		return fmt.Errorf("error parsing config file: %w", err)
 	}
 
+	processorArchitecture, err := msixProcessorArchitecture(options.Arch)
+	if err != nil {
+		return err
+	}
+
 	// Create MSIX options
 	msixOptions := MSIXOptions{
 		Publisher:             options.Publisher,
 		CertificatePath:       options.CertificatePath,
 		CertificatePassword:   options.CertificatePassword,
-		ProcessorArchitecture: options.Arch,
+		ProcessorArchitecture: processorArchitecture,
 		ExecutableName:        options.ExecutableName,
 		ExecutablePath:        options.ExecutablePath,
 		OutputPath:            options.OutputPath,
@@ -542,6 +547,23 @@ type ToolMSIXInstallToolsOptions struct{}
 func ToolMSIXInstallTools(_ *ToolMSIXInstallToolsOptions) error {
 	DisableFooter = true
 	return InstallMSIXTools()
+}
+
+// msixProcessorArchitecture maps an architecture name onto the values MSIX
+// manifests use. MSIX names (x64, x86, arm64) and Go names (amd64, 386, arm64)
+// are both accepted, so `--arch {{.ARCH}}` from the Taskfile works. An empty
+// value is returned unchanged so the default from the host applies later.
+func msixProcessorArchitecture(arch string) (string, error) {
+	switch arch {
+	case "", "x64", "x86", "arm64":
+		return arch, nil
+	case "amd64":
+		return "x64", nil
+	case "386":
+		return "x86", nil
+	default:
+		return "", fmt.Errorf("unsupported MSIX architecture %q (expected x64, x86, arm64, amd64 or 386)", arch)
+	}
 }
 
 // msixPackagerOptions maps the packages.msix.tool manifest value onto the

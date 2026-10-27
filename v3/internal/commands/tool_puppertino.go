@@ -15,8 +15,11 @@ import (
 )
 
 // puppertinoRawBaseURL is where the Puppertino release files are fetched from.
-// The upstream default branch is "master"; the "main" path used by the
-// Taskfile template returns 404. It is a variable so tests can point it at a local server.
+// The upstream default branch is "master". The legacy build_assets Taskfile
+// template still uses the ".../main/..." path, which returns 404; that template
+// is intentionally left unchanged (changing it alters stock Taskfile
+// fingerprints the migrator relies on). It is a variable so tests can point
+// it at a local server.
 var puppertinoRawBaseURL = "https://raw.githubusercontent.com/codedgar/Puppertino/master"
 
 const (
@@ -40,9 +43,9 @@ func ToolPuppertino(options *ToolPuppertinoOptions) error {
 
 	frontend := options.Frontend
 	if frontend == "" {
-		dir, err := defaultPuppertinoFrontend()
-		if err != nil {
-			return err
+		dir, warning := defaultPuppertinoFrontend()
+		if warning != nil {
+			fmt.Printf("Warning: %v. Falling back to %q.\n", warning, dir)
 		}
 		frontend = dir
 	}
@@ -68,8 +71,10 @@ func ToolPuppertino(options *ToolPuppertinoOptions) error {
 	return nil
 }
 
-// defaultPuppertinoFrontend returns frontend.directory from the manifest when one is present,
-// otherwise the conventional "frontend" directory.
+// defaultPuppertinoFrontend returns frontend.directory from the manifest when
+// one is present, otherwise the conventional "frontend" directory. An invalid
+// manifest does not fail the tool: it returns "frontend" together with the
+// load error so the caller can warn.
 func defaultPuppertinoFrontend() (string, error) {
 	root, _, err := manifest.Discover(".")
 	if err != nil {
@@ -77,7 +82,7 @@ func defaultPuppertinoFrontend() (string, error) {
 	}
 	loaded, err := manifest.Load(root, "")
 	if err != nil {
-		return "", err
+		return "frontend", fmt.Errorf("could not read %s: %v", manifest.Filename, err)
 	}
 	if loaded.Config.Frontend.Directory == "" {
 		return "frontend", nil
