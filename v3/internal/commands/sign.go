@@ -376,6 +376,123 @@ func signWindowsBuiltin(options *flags.Sign, password string) error {
 	return fmt.Errorf("built-in Windows signing not yet implemented - please use signtool.exe on Windows, or install osslsigncode")
 }
 
+// linuxPGPSigning is the key material a legacy dpkg-sig or rpmsign run needs.
+// The key is referenced by key ID and the passphrase by file, so the passphrase
+// never appears in argv or the environment.
+type linuxPGPSigning struct {
+	keyID          string // fingerprint or key ID to sign with
+	homedir        string // GNUPG home holding an imported key file; empty uses the default keyring
+	passphraseFile string // 0600 file holding the passphrase; empty when none is needed
+}
+
+// prepareLinuxPGPSigning resolves a key file or key ID. A key file is imported into
+// a private GNUPG home so the signature can be made by fingerprint. The returned
+// cleanup removes every temporary file and directory it created.
+func prepareLinuxPGPSigning(pgpKey, password string) (linuxPGPSigning, func(), error) {
+	var created []string
+	cleanup := func() {
+		for _, path := range created {
+			_ = os.RemoveAll(path)
+		}
+	}
+	signing := linuxPGPSigning{keyID: pgpKey}
+	if info, err := os.Stat(pgpKey); err == nil && !info.IsDir() {
+		home, err := os.MkdirTemp("", "wails-gnupg-*")
+		if err != nil {
+			return linuxPGPSigning{}, cleanup, err
+		}
+		created = append(created, home)
+		if output, err := exec.Command("gpg", "--homedir", home, "--batch", "--import", pgpKey).CombinedOutput(); err != nil {
+			return linuxPGPSigning{}, cleanup, fmt.Errorf("import PGP key %s: %w: %s", pgpKey, err, strings.TrimSpace(string(output)))
+		}
+		output, err := exec.Command("gpg", "--homedir", home, "--batch", "--with-colons", "--list-secret-keys").Output()
+		if err != nil {
+			return linuxPGPSigning{}, cleanup, fmt.Errorf("list imported PGP secret keys: %w", err)
+		}
+		fingerprint := firstGPGFingerprint(string(output))
+		if fingerprint == "" {
+			return linuxPGPSigning{}, cleanup, fmt.Errorf("PGP key file %s contains no secret key", pgpKey)
+		}
+		signing.keyID = fingerprint
+		signing.homedir = home
+	}
+	if password != "" {
+		file, err := os.CreateTemp("", "wails-pgp-passphrase-*")
+		if err != nil {
+			return linuxPGPSigning{}, cleanup, err
+		}
+		created = append(created, file.Name())
+		// CreateTemp opens the file 0600; the passphrase is written once and read by gpg only.
+		if _, err := file.WriteString(password); err != nil {
+			file.Close()
+			return linuxPGPSigning{}, cleanup, err
+		}
+		if err := file.Close(); err != nil {
+			return linuxPGPSigning{}, cleanup, err
+		}
+		signing.passphraseFile = file.Name()
+	}
+	return signing, cleanup, nil
+}
+
+// firstGPGFingerprint returns the first fingerprint in `gpg --with-colons` output.
+func firstGPGFingerprint(colons string) string {
+	for _, line := range strings.Split(colons, "\n") {
+		fields := strings.Split(line, ":")
+		if len(fields) > 9 && fields[0] == "fpr" {
+			return fields[9]
+		}
+	}
+	return ""
+}
+
+// gpgOptions returns the gpg options that make the signing non-interactive. The
+// passphrase is read from its file, never from the command line.
+func (s linuxPGPSigning) gpgOptions() string {
+	options := []string{}
+	if s.homedir != "" {
+		options = append(options, "--homedir", s.homedir)
+	}
+	if s.passphraseFile != "" {
+		options = append(options, "--batch", "--pinentry-mode", "loopback", "--passphrase-file", s.passphraseFile)
+	}
+	return strings.Join(options, " ")
+}
+
+// rpmsignArgs builds the rpmsign arguments for input. The key and passphrase are
+// supplied as rpm macros, so no secret is placed on the command line.
+func rpmsignArgs(s linuxPGPSigning, input string) []string {
+	args := []string{"--define", "_gpg_name " + s.keyID}
+	if s.homedir != "" {
+		args = append(args, "--define", "_gpg_path "+s.homedir)
+	}
+	if s.passphraseFile != "" {
+		args = append(args, "--define", "_gpg_sign_cmd_extra_args --batch --pinentry-mode loopback --passphrase-file "+s.passphraseFile)
+	}
+	return append(args, "--addsign", input)
+}
+
+// debsignArgs builds the dpkg-sig arguments for a role and input.
+func debsignArgs(s linuxPGPSigning, role, input string) []string {
+	args := []string{"-k", s.keyID, "--sign", role}
+	if options := s.gpgOptions(); options != "" {
+		args = append(args, "--gpg-options", options)
+	}
+	return append(args, input)
+}
+
+// linuxSignerCommand runs a signing tool, pointing gpg at the imported key home
+// when there is one.
+func linuxSignerCommand(s linuxPGPSigning, name string, args ...string) *exec.Cmd {
+	cmd := exec.Command(name, args...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if s.homedir != "" {
+		cmd.Env = append(os.Environ(), "GNUPGHOME="+s.homedir)
+	}
+	return cmd
+}
+
 func signDEB(options *flags.Sign) error {
 	if options.PGPKey == "" {
 		return fmt.Errorf("no PGP signing key found for DEB signing — configure linux.signing in wails.yaml, pass --pgp-key, or run `wails3 setup` / `wails3 setup signing`")
@@ -394,46 +511,44 @@ func signDEB(options *flags.Sign) error {
 		}
 	}
 
-	if options.Verbose {
-		pterm.Info.Printfln("Signing DEB package: %s", options.Input)
-	}
-
 	role := options.Role
 	if role == "" {
 		role = "builder"
 	}
 
-	// Use dpkg-sig for signing
-	args := []string{
-		"-k", options.PGPKey,
-		"--sign", role,
+	signing, cleanup, err := prepareLinuxPGPSigning(options.PGPKey, password)
+	defer cleanup()
+	if err != nil {
+		return err
 	}
 
-	if password != "" {
-		// dpkg-sig reads from GPG_TTY or gpg-agent
-		// For scripted use, we need to use gpg with passphrase
-		args = append(args, "--gpg-options", fmt.Sprintf("--batch --passphrase %s", password))
+	if options.Verbose {
+		pterm.Info.Printfln("Signing DEB package: %s", options.Input)
 	}
 
-	args = append(args, options.Input)
-
-	cmd := exec.Command("dpkg-sig", args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	if err := cmd.Run(); err != nil {
-		// Fallback: try using gpg directly to sign
-		return signDEBWithGPG(options, password, role)
+	if _, err := exec.LookPath("dpkg-sig"); err == nil {
+		cmd := linuxSignerCommand(signing, "dpkg-sig", debsignArgs(signing, role, options.Input)...)
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("dpkg-sig failed: %w", err)
+		}
+		pterm.Success.Printfln("Signed: %s", options.Input)
+		return nil
 	}
-
-	pterm.Success.Printfln("Signed: %s", options.Input)
-	return nil
-}
-
-func signDEBWithGPG(options *flags.Sign, password, role string) error {
-	// Alternative approach using ar and gpg directly
-	// This is more portable but more complex
-	return fmt.Errorf("dpkg-sig not found - please install dpkg-sig or use a Linux system")
+	// dpkg-sig is no longer packaged on current Debian and Fedora. debsigs is its
+	// maintained replacement; it cannot take a passphrase, so only unprotected keys
+	// (or keys unlocked in gpg-agent) can use it.
+	if _, err := exec.LookPath("debsigs"); err == nil {
+		if password != "" {
+			return fmt.Errorf("debsigs cannot use a passphrase-protected key; sign with wake instead (linux.signing in wails.yaml), which signs deb packages natively with nfpm")
+		}
+		args := []string{"--sign=" + role, "-k", signing.keyID, options.Input}
+		if err := linuxSignerCommand(signing, "debsigs", args...).Run(); err != nil {
+			return fmt.Errorf("debsigs failed: %w", err)
+		}
+		pterm.Success.Printfln("Signed: %s", options.Input)
+		return nil
+	}
+	return fmt.Errorf("neither dpkg-sig nor debsigs is installed; install one, or sign the deb with wake (linux.signing in wails.yaml), which signs deb packages natively with nfpm")
 }
 
 func signRPM(options *flags.Sign) error {
@@ -453,28 +568,17 @@ func signRPM(options *flags.Sign) error {
 		}
 	}
 
+	signing, cleanup, err := prepareLinuxPGPSigning(options.PGPKey, password)
+	defer cleanup()
+	if err != nil {
+		return err
+	}
+
 	if options.Verbose {
 		pterm.Info.Printfln("Signing RPM package: %s", options.Input)
 	}
 
-	// RPM signing requires the key to be imported to GPG keyring
-	// and uses rpmsign command
-	args := []string{
-		"--addsign",
-		options.Input,
-	}
-
-	cmd := exec.Command("rpmsign", args...)
-
-	// Set up passphrase via environment if needed
-	if password != "" {
-		cmd.Env = append(os.Environ(), fmt.Sprintf("GPG_PASSPHRASE=%s", password))
-	}
-
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	if err := cmd.Run(); err != nil {
+	if err := linuxSignerCommand(signing, "rpmsign", rpmsignArgs(signing, options.Input)...).Run(); err != nil {
 		return fmt.Errorf("rpmsign failed: %w", err)
 	}
 

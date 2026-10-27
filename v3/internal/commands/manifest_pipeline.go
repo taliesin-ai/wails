@@ -23,6 +23,7 @@ import (
 
 	"github.com/wailsapp/wails/v3/internal/dev"
 	"github.com/wailsapp/wails/v3/internal/flags"
+	"github.com/wailsapp/wails/v3/internal/packager"
 	"github.com/wailsapp/wails/v3/internal/report"
 	"github.com/wailsapp/wails/v3/internal/report/pulse"
 	"github.com/wailsapp/wails/v3/internal/term"
@@ -515,6 +516,18 @@ func (h *manifestHandler) Identity(ctx context.Context, node pipeline.Node) (str
 			if path, err := exec.LookPath("codesign"); err == nil {
 				tools = append(tools, path)
 			}
+		}
+		if spec.NativeSigning.Certificate != "" {
+			// The key digest is part of the action identity, so rotating the key rebuilds the package.
+			keyFile, err := existingPathInsideProject(h.root, spec.NativeSigning.Certificate)
+			if err != nil {
+				return "", fmt.Errorf("signing.linux.certificate: %w", err)
+			}
+			digest, err := linuxSigningKeyDigest(keyFile)
+			if err != nil {
+				return "", err
+			}
+			externalIdentity = "linux-signing-key:" + digest + "|role:" + spec.NativeSigning.Identity
 		}
 		name := map[string]string{"nsis": "makensis"}[spec.Format]
 		if spec.Format == "msix" {
@@ -2472,7 +2485,24 @@ func (h *manifestHandler) packageLinux(s pipeline.PackageSpec) (pipeline.RunResu
 		return pipeline.RunResult{}, err
 	}
 	defer os.RemoveAll(outDir)
-	if err := toolPackage(&flags.ToolPackage{Format: s.Format, ExecutableName: s.Project.BinaryName, ConfigPath: config, Out: outDir}); err != nil {
+	if s.NativeSigning.Certificate != "" {
+		// The passphrase comes from the named environment variable and is handed to
+		// nfpm in memory only; it never reaches the configuration file or argv.
+		passphrase := ""
+		if credential := s.NativeSigning.Credential; credential != "" {
+			passphrase = os.Getenv(credential)
+			if passphrase == "" {
+				return pipeline.RunResult{}, fmt.Errorf("linux signing password environment variable %s is empty", credential)
+			}
+		}
+		pkgType := packager.DEB
+		if s.Format == "rpm" {
+			pkgType = packager.RPM
+		}
+		if err := packager.CreateSignedPackageFromConfig(pkgType, config, filepath.Join(outDir, s.Project.BinaryName+"."+s.Format), passphrase); err != nil {
+			return pipeline.RunResult{}, err
+		}
+	} else if err := toolPackage(&flags.ToolPackage{Format: s.Format, ExecutableName: s.Project.BinaryName, ConfigPath: config, Out: outDir}); err != nil {
 		return pipeline.RunResult{}, err
 	}
 	return pipeline.RunResult{}, findAndMovePackage(outDir, s.Project.BinaryName, s.Format, filepath.Join(h.root, s.Output))
@@ -2482,6 +2512,9 @@ func (h *manifestHandler) prepareLinuxPackageConfig(s pipeline.PackageSpec) (str
 	workspace := h.packageWorkspace(s)
 	configPath := filepath.Join(workspace, "nfpm.yaml")
 	if s.Config.Template != "" {
+		if s.NativeSigning.Certificate != "" {
+			return "", fmt.Errorf("linux signing for %s packages needs the generated nfpm configuration; remove packages.%s.template or sign the package outside wake", s.Format, s.Format)
+		}
 		err := prepareGeneratedWorkspace(workspace, ".linux-package-stage-*", func(staged string) error {
 			return h.copyPackageReplacement(s, filepath.Join(staged, "nfpm.yaml"))
 		})
@@ -2534,6 +2567,15 @@ func (h *manifestHandler) prepareLinuxPackageConfig(s pipeline.PackageSpec) (str
 			if ok {
 				scripts[name] = filepath.Join(assets, "linux", "nfpm", "scripts", filepath.Base(path))
 			}
+		}
+	}
+	if s.NativeSigning.Certificate != "" {
+		keyFile, err := existingPathInsideProject(h.root, s.NativeSigning.Certificate)
+		if err != nil {
+			return "", fmt.Errorf("signing.linux.certificate: %w", err)
+		}
+		if err := applyNFPMSignature(config, s.Format, keyFile, s.NativeSigning.Identity); err != nil {
+			return "", err
 		}
 	}
 	configuredScripts := map[string]string{
@@ -3013,6 +3055,23 @@ func (h *manifestHandler) sign(ctx context.Context, s pipeline.SignSpec) (pipeli
 			return signErr
 		})
 		return pipeline.RunResult{Detail: detail}, err
+	}
+	if s.TargetOS == "linux" && (s.Format == "deb" || s.Format == "rpm") {
+		// nfpm signed the package while writing it. This stage verifies that the deb
+		// carries a signature member and publishes the signed bytes unchanged. rpm
+		// signatures are checked end to end with `rpm -K` rather than here.
+		if s.Format == "deb" {
+			signed, err := debHasNativeSignature(input)
+			if err != nil {
+				return pipeline.RunResult{}, fmt.Errorf("verify deb signature: %w", err)
+			}
+			if !signed {
+				return pipeline.RunResult{}, fmt.Errorf("%s has no dpkg signature; linux package signing did not run", filepath.Base(input))
+			}
+		}
+		return pipeline.RunResult{}, produceNamedPathTransactional(output, ".linux-sign-output-*", filepath.Base(input), func(staged string) error {
+			return copyManifestPath(input, staged)
+		})
 	}
 	password := ""
 	if s.TargetOS == "windows" && s.Config.Credential != "" {

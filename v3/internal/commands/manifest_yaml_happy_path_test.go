@@ -859,7 +859,7 @@ project:
   version: 1.0.0
 linux:
   signing:
-    identity: release
+    identity: origin
     certificate: release-key
 profiles:
   release:
@@ -881,10 +881,7 @@ profiles:
 	require.NoError(t, os.MkdirAll(filepath.Dir(filepath.Join(root, packageSpec.Binary)), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(root, packageSpec.Binary), []byte("binary"), 0o755))
 
-	fakeTools := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(fakeTools, "dpkg-sig"), []byte("#!/bin/sh\nexit 0\n"), 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(fakeTools, "rpmsign"), []byte("#!/bin/sh\nexit 0\n"), 0o755))
-	t.Setenv("PATH", fakeTools+string(os.PathListSeparator)+os.Getenv("PATH"))
+	writeTestPGPKey(t, root, "release-key", "")
 	for _, format := range []string{"deb", "rpm"} {
 		packageNode := plan.Nodes[pipeline.NodeKey("package:linux/amd64:"+format)]
 		packageSpec = packageNode.Spec.(pipeline.PackageSpec)
@@ -894,6 +891,11 @@ profiles:
 		_, err = handler.Run(t.Context(), signNode)
 		require.NoError(t, err, format)
 		assert.FileExists(t, filepath.Join(root, packageSpec.Output+".signed"))
+		if format == "deb" {
+			signed, err := debHasNativeSignature(filepath.Join(root, packageSpec.Output+".signed"))
+			require.NoError(t, err)
+			assert.True(t, signed, "nfpm must sign the deb while writing it")
+		}
 	}
 }
 
