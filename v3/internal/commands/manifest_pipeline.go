@@ -2420,7 +2420,12 @@ func (h *manifestHandler) prepareAppImageInputs(s pipeline.PackageSpec) (desktop
 			if resolveErr != nil {
 				return fmt.Errorf("package appimage desktop_entry: %w", resolveErr)
 			}
-			return copyManifestPath(desktopSource, stagedDesktop)
+			data, readErr := os.ReadFile(desktopSource)
+			if readErr != nil {
+				return readErr
+			}
+			// The staged copy is normalised for appimagetool; the user's file is never touched.
+			return os.WriteFile(stagedDesktop, normalizeDesktopEntry(data), 0o644)
 		}
 		categories := "Utility;"
 		if len(s.Config.Categories) > 0 {
@@ -2429,6 +2434,24 @@ func (h *manifestHandler) prepareAppImageInputs(s pipeline.PackageSpec) (desktop
 		return generateDotDesktop(&DotDesktopOptions{OutputFile: stagedDesktop, Type: "Application", Name: s.Project.ProductName, Exec: s.Project.BinaryName, Icon: s.Project.BinaryName, Comment: s.Project.Description, Categories: categories, Version: "1.0"})
 	})
 	return desktop, icon, buildDir, err
+}
+
+// normalizeDesktopEntry removes whitespace-only lines and trailing whitespace so
+// appimagetool accepts hand-edited desktop entries, and ends the file with a
+// single newline.
+func normalizeDesktopEntry(data []byte) []byte {
+	var lines []string
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimRight(line, " \t\r")
+		if line == "" {
+			continue
+		}
+		lines = append(lines, line)
+	}
+	if len(lines) == 0 {
+		return nil
+	}
+	return []byte(strings.Join(lines, "\n") + "\n")
 }
 
 func (h *manifestHandler) packageLinux(s pipeline.PackageSpec) (pipeline.RunResult, error) {
