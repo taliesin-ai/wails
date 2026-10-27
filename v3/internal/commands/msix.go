@@ -15,6 +15,7 @@ import (
 
 	"github.com/wailsapp/wails/v3/internal/flags"
 	"github.com/wailsapp/wails/v3/internal/wake/manifest"
+	"github.com/wailsapp/wails/v3/internal/wake/pipeline"
 	"golang.org/x/image/draw"
 )
 
@@ -179,27 +180,17 @@ func checkMSIXTools(options *flags.ToolMSIX) error {
 		}
 	}
 
-	// Check if MakeAppx is available if requested
-	if options.UseMakeAppx {
-		cmd := exec.Command("where", "MakeAppx.exe")
-		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("MakeAppx.exe is not found in PATH; install the Windows SDK")
-		}
-	}
-
-	// If neither is specified, check for MakeAppx as the default
-	if !options.UseMsixPackagingTool && !options.UseMakeAppx {
-		cmd := exec.Command("where", "MakeAppx.exe")
-		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("MakeAppx.exe is not found in PATH. Please install the Windows SDK")
+	// MakeAppx is required for the default packager, and also when neither packager is selected.
+	if options.UseMakeAppx || !options.UseMsixPackagingTool {
+		if _, ok := pipeline.WindowsToolPath("MakeAppx.exe"); !ok {
+			return windowsToolMissing("MakeAppx.exe", "install the Windows SDK")
 		}
 	}
 
 	// Check if signtool is available for signing
 	if options.CertificatePath != "" {
-		cmd := exec.Command("where", "signtool.exe")
-		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("signtool.exe is not found in PATH. Please install the Windows SDK")
+		if _, ok := pipeline.WindowsToolPath("signtool.exe"); !ok {
+			return windowsToolMissing("signtool.exe", "install the Windows SDK")
 		}
 	}
 
@@ -306,7 +297,7 @@ func createMSIXWithMakeAppx(options *MSIXOptions) error {
 
 	// Create the MSIX package
 	fmt.Println("Creating MSIX package using MakeAppx.exe...")
-	cmd := exec.Command("MakeAppx.exe", "pack", "/d", tempDir, "/p", options.OutputPath)
+	cmd := exec.Command(windowsToolExecutable("MakeAppx.exe"), "pack", "/d", tempDir, "/p", options.OutputPath)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
@@ -325,7 +316,7 @@ func createMSIXWithMakeAppx(options *MSIXOptions) error {
 
 		signArgs = append(signArgs, options.OutputPath)
 
-		cmd = exec.Command("signtool.exe", signArgs...)
+		cmd = exec.Command(windowsToolExecutable("signtool.exe"), signArgs...)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		if err := cmd.Run(); err != nil {
@@ -517,8 +508,7 @@ func InstallMSIXTools() error {
 	// Check if Windows SDK is installed
 	fmt.Println("Checking for Windows SDK...")
 	sdkInstalled := false
-	cmd = exec.Command("where", "MakeAppx.exe")
-	if err := cmd.Run(); err == nil {
+	if _, ok := pipeline.WindowsToolPath("MakeAppx.exe"); ok {
 		sdkInstalled = true
 		fmt.Println("Windows SDK is already installed.")
 	}

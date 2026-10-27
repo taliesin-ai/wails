@@ -534,9 +534,9 @@ func (h *manifestHandler) Identity(ctx context.Context, node pipeline.Node) (str
 			name = msixExecutableName(spec.Config.Tool)
 		}
 		if name != "" {
-			path, err := exec.LookPath(name)
-			if err != nil {
-				return "", fmt.Errorf("%s packaging requires %s: %w", spec.Format, name, err)
+			path, ok := pipeline.WindowsToolPath(name)
+			if !ok {
+				return "", fmt.Errorf("%s packaging requires %s: not found on PATH or in its standard install location", spec.Format, name)
 			}
 			tools = append(tools, path)
 		}
@@ -2647,7 +2647,7 @@ func (h *manifestHandler) packageNSIS(ctx context.Context, s pipeline.PackageSpe
 		args = append(args, "-DWAILS_INSTALL_SCOPE="+s.Config.InstallScope)
 	}
 	args = append(args, "project.nsi")
-	result, err := runManifestCommandWithEnvironment(ctx, dir, nsisEnvironment(os.Environ(), runtime.GOOS, nsisLocaleSupported), "makensis", args...)
+	result, err := runManifestCommandWithEnvironment(ctx, dir, nsisEnvironment(os.Environ(), runtime.GOOS, nsisLocaleSupported), windowsToolExecutable("makensis"), args...)
 	if err != nil {
 		return pipeline.RunResult{Detail: result}, err
 	}
@@ -3095,6 +3095,11 @@ func (h *manifestHandler) sign(ctx context.Context, s pipeline.SignSpec) (pipeli
 	err = produceNamedPathTransactional(output, ".sign-output-*", filepath.Base(input), func(staged string) error {
 		if err := copyManifestPath(input, staged); err != nil {
 			return err
+		}
+		if s.TargetOS == "windows" && s.Format == "msix" {
+			if err := verifyMSIXPublisher(staged, certificate, password, s.Config.Thumbprint); err != nil {
+				return err
+			}
 		}
 		if s.TargetOS == "darwin" && s.Format == "dmg" {
 			if err := manifestPrepareDMGForSigning(ctx, staged, s.Config.Identity, entitlements, s.Config.Notarize); err != nil {

@@ -12,6 +12,7 @@ import (
 	"github.com/wailsapp/wails/v3/internal/defaults"
 	"github.com/wailsapp/wails/v3/internal/flags"
 	"github.com/wailsapp/wails/v3/internal/keychain"
+	"github.com/wailsapp/wails/v3/internal/wake/pipeline"
 )
 
 // resolveSigningDefaults fills in any signing options not supplied via flags from
@@ -340,26 +341,11 @@ func signWindowsNative(options *flags.Sign, password string) error {
 }
 
 func findSigntool() (string, error) {
-	// Check if signtool is in PATH
-	path, err := exec.LookPath("signtool.exe")
-	if err == nil {
+	// PATH first, then the highest Windows SDK version for this host architecture.
+	if path, ok := pipeline.WindowsToolPath("signtool.exe"); ok {
 		return path, nil
 	}
-
-	// Common Windows SDK locations
-	sdkPaths := []string{
-		`C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x64\signtool.exe`,
-		`C:\Program Files (x86)\Windows Kits\10\bin\10.0.19041.0\x64\signtool.exe`,
-		`C:\Program Files (x86)\Windows Kits\10\bin\x64\signtool.exe`,
-	}
-
-	for _, p := range sdkPaths {
-		if _, err := os.Stat(p); err == nil {
-			return p, nil
-		}
-	}
-
-	return "", fmt.Errorf("signtool.exe not found")
+	return "", windowsToolMissing("signtool.exe", "install the Windows SDK")
 }
 
 func signWindowsBuiltin(options *flags.Sign, password string) error {
