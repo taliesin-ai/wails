@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strings"
 
 	"github.com/pterm/pterm"
 	"github.com/wailsapp/wails/v3/internal/wake/manifest"
@@ -27,6 +28,8 @@ var (
 	iosXcodeArchiveRef   = regexp.MustCompile(`path = "\.\./\.\./\.\./bin/[^"]*";`)
 	iosXcodeBuildScript  = regexp.MustCompile(`shellScript = "(?:[^"\\]|\\.)*";`)
 	iosXcodeSDKRoot      = regexp.MustCompile(`SDKROOT = iphoneos;`)
+	iosXcodeBuildConfig  = regexp.MustCompile(`buildSettings = \{\n`)
+	iosXcodeSigningOff   = regexp.MustCompile(`CODE_SIGNING_ALLOWED = NO;`)
 	iosXcodePrebuiltNote = `shellScript = "set -e\necho \"Go c-archive is prebuilt by wails3 ios xcode\"\n";`
 )
 
@@ -75,7 +78,7 @@ func IOSXcode(options *IOSXcodeOptions, arguments []string) error {
 		Source:      filepath.Join(root, filepath.FromSlash(pkg.Assets), "ios", "xcode"),
 		Destination: project,
 		Prepare: func(staged string) error {
-			return prepareIOSXcodeProject(staged, archive)
+			return prepareIOSXcodeProject(staged, archive, iosXcodeSigning{Team: loaded.Config.Signing.IOS.TeamID, Identity: loaded.Config.Signing.IOS.Identity})
 		},
 	})
 	if err != nil {
@@ -96,7 +99,7 @@ func IOSXcode(options *IOSXcodeOptions, arguments []string) error {
 
 // prepareIOSXcodeProject links the wake-built c-archive into the staged project
 // and rewrites the generated project to use it.
-func prepareIOSXcodeProject(staged, archive string) error {
+func prepareIOSXcodeProject(staged, archive string, signing iosXcodeSigning) error {
 	libName := filepath.Base(archive)
 	libDir := filepath.Join(staged, "lib")
 	if err := os.MkdirAll(libDir, 0o755); err != nil {
@@ -110,7 +113,7 @@ func prepareIOSXcodeProject(staged, archive string) error {
 	if err != nil {
 		return fmt.Errorf("read generated project: %w", err)
 	}
-	rewritten, err := rewriteIOSXcodeProject(source, libName)
+	rewritten, err := rewriteIOSXcodeProject(source, libName, signing)
 	if err != nil {
 		return err
 	}
@@ -121,10 +124,24 @@ func prepareIOSXcodeProject(staged, archive string) error {
 	return os.WriteFile(pbxprojPath, rewritten, info.Mode().Perm())
 }
 
+// iosXcodeSigning carries the signing inputs for the generated project. With no
+// team the project stays unsigned, which suffices for simulator builds without an
+// Apple account. With a team it is signed automatically by Xcode.
+type iosXcodeSigning struct {
+	Team     string
+	Identity string
+}
+
 // rewriteIOSXcodeProject points the archive reference at lib/<name>, replaces
 // the legacy Go build phase with a no-op, and sets SDKROOT to auto so Xcode
-// picks the simulator or device SDK from the chosen destination.
-func rewriteIOSXcodeProject(source []byte, libName string) ([]byte, error) {
+// picks the simulator or device SDK from the chosen destination. When a team is
+// set, every build configuration signs automatically with that team, using the
+// configured identity or "Apple Development".
+func rewriteIOSXcodeProject(source []byte, libName string, signing iosXcodeSigning) ([]byte, error) {
+	team := signing.Team
+	if team != "" && !manifest.IsValidAppleTeamID(team) {
+		return nil, fmt.Errorf("ios.signing.team_id %q is not a valid Apple team identifier", team)
+	}
 	if len(iosXcodeArchiveRef.FindAll(source, -1)) != 1 {
 		return nil, fmt.Errorf("generated project.pbxproj has an unexpected Go archive reference")
 	}
@@ -137,6 +154,26 @@ func rewriteIOSXcodeProject(source []byte, libName string) ([]byte, error) {
 	output := iosXcodeArchiveRef.ReplaceAllLiteral(source, []byte(fmt.Sprintf(`path = "lib/%s";`, libName)))
 	output = iosXcodeBuildScript.ReplaceAllLiteral(output, []byte(iosXcodePrebuiltNote))
 	output = iosXcodeSDKRoot.ReplaceAllLiteral(output, []byte("SDKROOT = auto;"))
+	if team != "" {
+		identity := signing.Identity
+		if identity == "" {
+			identity = "Apple Development"
+		}
+		if strings.ContainsAny(identity, "\"\\;\n") {
+			return nil, fmt.Errorf("ios.signing.identity %q cannot be written into the Xcode project", identity)
+		}
+		if len(iosXcodeSigningOff.FindAll(output, -1)) == 0 {
+			return nil, fmt.Errorf("generated project.pbxproj has no CODE_SIGNING_ALLOWED setting")
+		}
+		if len(iosXcodeBuildConfig.FindAll(output, -1)) == 0 {
+			return nil, fmt.Errorf("generated project.pbxproj has no build configurations to sign")
+		}
+		output = iosXcodeSigningOff.ReplaceAllLiteral(output, []byte("CODE_SIGNING_ALLOWED = YES;"))
+		settings := "buildSettings = {\n\t\t\t\tCODE_SIGN_STYLE = Automatic;\n" +
+			"\t\t\t\tCODE_SIGN_IDENTITY = \"" + identity + "\";\n" +
+			"\t\t\t\tDEVELOPMENT_TEAM = " + team + ";\n"
+		output = iosXcodeBuildConfig.ReplaceAllLiteral(output, []byte(settings))
+	}
 	return output, nil
 }
 

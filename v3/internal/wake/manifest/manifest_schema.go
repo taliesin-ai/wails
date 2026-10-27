@@ -138,6 +138,7 @@ type manifestPlatform struct {
 type manifestSigning struct {
 	Credential          *string `manifest:"credential,optional"`
 	Identity            *string `manifest:"identity,optional"`
+	TeamID              *string `manifest:"team_id,optional" platforms:"ios"`
 	Certificate         *string `manifest:"certificate,optional"`
 	Thumbprint          *string `manifest:"thumbprint,optional"`
 	TimestampServer     *string `manifest:"timestamp_server,optional"`
@@ -508,6 +509,7 @@ func applyPlatform(doc *Document, name string, raw *manifestPlatform) {
 		signing.Enabled = true
 		setString(&signing.Credential, raw.Signing.Credential)
 		setString(&signing.Identity, raw.Signing.Identity)
+		setString(&signing.TeamID, raw.Signing.TeamID)
 		setString(&signing.Certificate, raw.Signing.Certificate)
 		setString(&signing.Thumbprint, raw.Signing.Thumbprint)
 		setString(&signing.TimestampServer, raw.Signing.TimestampServer)

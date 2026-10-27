@@ -269,7 +269,7 @@ func TestRewriteIOSXcodeProjectLinksPrebuiltArchive(t *testing.T) {
 		SDKROOT = iphoneos;
 		SDKROOT = iphoneos;
 `)
-	output, err := rewriteIOSXcodeProject(source, "App.a")
+	output, err := rewriteIOSXcodeProject(source, "App.a", iosXcodeSigning{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -294,7 +294,7 @@ func TestRewriteIOSXcodeProjectAcceptsGeneratedTemplate(t *testing.T) {
 		t.Fatal(err)
 	}
 	source := readIDETestFile(t, filepath.Join(out, "main.xcodeproj", "project.pbxproj"))
-	output, err := rewriteIOSXcodeProject([]byte(source), "Wails App.a")
+	output, err := rewriteIOSXcodeProject([]byte(source), "Wails App.a", iosXcodeSigning{})
 	if err != nil {
 		t.Fatalf("generated template no longer rewrites: %v", err)
 	}
@@ -304,7 +304,7 @@ func TestRewriteIOSXcodeProjectAcceptsGeneratedTemplate(t *testing.T) {
 }
 
 func TestRewriteIOSXcodeProjectRejectsUnexpectedTemplate(t *testing.T) {
-	if _, err := rewriteIOSXcodeProject([]byte("nothing to rewrite"), "App.a"); err == nil {
+	if _, err := rewriteIOSXcodeProject([]byte("nothing to rewrite"), "App.a", iosXcodeSigning{}); err == nil {
 		t.Fatal("expected error for a project without the archive reference")
 	}
 }

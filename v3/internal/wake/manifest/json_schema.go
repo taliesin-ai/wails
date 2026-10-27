@@ -86,6 +86,9 @@ func jsonSchemaAttribute(path, name string, destination reflect.Type, descriptor
 		if descriptor.nonempty {
 			result["minLength"] = 1
 		}
+		if name == "team_id" {
+			result["pattern"] = appleTeamIDPattern.String()
+		}
 	case reflect.Int:
 		result["type"] = "integer"
 	case reflect.Bool:

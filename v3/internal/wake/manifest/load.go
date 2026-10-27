@@ -94,6 +94,14 @@ func legacyWailsYAML(contents []byte) bool {
 	return mappingValue(root, "info") != nil && mappingValue(root, "project") == nil
 }
 
+var appleTeamIDPattern = regexp.MustCompile(`^[A-Z0-9]{10}$`)
+
+// IsValidAppleTeamID reports whether value is an Apple Developer team
+// identifier: exactly 10 uppercase letters or digits.
+func IsValidAppleTeamID(value string) bool {
+	return appleTeamIDPattern.MatchString(value)
+}
+
 func Load(start, profile string) (*Loaded, error) {
 	return loadWithOperations(start, profile, Discover, os.ReadFile)
 }
@@ -315,6 +323,14 @@ func validateConfig(config Config) error {
 		{"ios", config.Signing.IOS}, {"android", config.Signing.Android},
 	} {
 		name, signing := signingEntry.name, signingEntry.value
+		if signing.TeamID != "" {
+			if name != "ios" {
+				return fieldValidationError(name+".signing.team_id", "is only supported for ios")
+			}
+			if !IsValidAppleTeamID(signing.TeamID) {
+				return fieldValidationError("ios.signing.team_id", "must be a 10-character Apple team identifier of uppercase letters and digits, got %q", signing.TeamID)
+			}
+		}
 		for field, value := range map[string]string{"certificate": signing.Certificate, "entitlements": signing.Entitlements, "provisioning_profile": signing.ProvisioningProfile} {
 			if err := paths.validate(name+".signing."+field, value, false); err != nil {
 				return err

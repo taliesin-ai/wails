@@ -621,6 +621,11 @@
               "description": "Project-relative Apple provisioning profile.",
               "type": "string"
             },
+            "team_id": {
+              "description": "Apple Developer team identifier: 10 uppercase letters or digits. Used for iOS device signing.",
+              "pattern": "^[A-Z0-9]{10}$",
+              "type": "string"
+            },
             "thumbprint": {
               "description": "Windows certificate thumbprint.",
               "type": "string"

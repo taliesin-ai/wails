@@ -2905,6 +2905,13 @@ func (h *manifestHandler) packageIOS(ctx context.Context, s pipeline.PackageSpec
 	}
 	if signing.Enabled && signing.Identity != "" {
 		identity = signing.Identity
+	} else if destination == "device" && signing.TeamID != "" {
+		// Without an explicit identity, device builds use the keychain identity for the team.
+		selected, err := iosTeamSigningIdentity(ctx, h.root, signing.TeamID)
+		if err != nil {
+			return pipeline.RunResult{}, err
+		}
+		identity = selected
 	}
 	signArgs := []string{"--force", "--sign", identity}
 	if destination == "device" && signing.Entitlements != "" {

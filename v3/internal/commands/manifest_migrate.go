@@ -624,6 +624,7 @@ func analyseMigrationWithScripts(root string) (MigrationReport, manifest.Documen
 	customs := newCustomBuildAdjustments()
 	customs.planHooks(reachability, rootTask)
 	packageManager := ""
+	teamID := ""
 	binaryName := ""
 	buildOutput := ""
 	devPort := 0
@@ -834,6 +835,15 @@ func analyseMigrationWithScripts(root string) (MigrationReport, manifest.Documen
 				if key == "GARBLE_ARGS" && value.Static != "" && !strings.Contains(value.Static, "{{") {
 					garbleArgs = strings.Fields(value.Static)
 				}
+				if key == "TEAM_ID" && value.Static != "" && !strings.Contains(value.Static, "{{") {
+					candidate := strings.TrimSpace(value.Static)
+					if manifest.IsValidAppleTeamID(candidate) {
+						teamID = candidate
+						report.Diagnostics = append(report.Diagnostics, MigrationDiagnostic{Severity: "info", Code: "translated-team-id", File: rel, Message: "translated TEAM_ID to ios.signing.team_id"})
+					} else {
+						report.Diagnostics = append(report.Diagnostics, MigrationDiagnostic{Severity: "warning", Code: "invalid-team-id", File: rel, Message: "TEAM_ID is not a 10-character Apple team identifier and was not migrated"})
+					}
+				}
 				if key == "VITE_PORT" && value.Static != "" && !strings.Contains(value.Static, "{{") {
 					port, convErr := strconv.Atoi(strings.TrimSpace(value.Static))
 					if convErr != nil || port < 1 || port > 65535 {
@@ -877,6 +887,9 @@ func analyseMigrationWithScripts(root string) (MigrationReport, manifest.Documen
 	}
 	if devPort != 0 {
 		doc.Dev.Port = devPort
+	}
+	if teamID != "" {
+		doc.Signing.IOS.TeamID = teamID
 	}
 	doc.Frontend.Bindings.TypeScript = typescriptBindings
 	doc.Frontend.Bindings.Interfaces = interfaceBindings
