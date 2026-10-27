@@ -34,6 +34,7 @@ build:
   strip: true
   vcs_info: false
   obfuscated: false
+  tidy: true
 dev:
   tags: []
   debounce_ms: 1000
