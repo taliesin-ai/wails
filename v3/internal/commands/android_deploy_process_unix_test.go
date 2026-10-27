@@ -17,6 +17,21 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// readEmulatorPID returns the pid the fake emulator wrote. The fixture creates
+// the file before writing it, so a file that exists may still be empty; only a
+// non-empty, parseable pid counts as written.
+func readEmulatorPID(path string) (int, bool) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return 0, false
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil {
+		return 0, false
+	}
+	return pid, true
+}
+
 func TestStartAndroidAVDCleansUpANewProcessWhenStartupIsCancelled(t *testing.T) {
 	root := t.TempDir()
 	t.Chdir(root)
@@ -37,17 +52,15 @@ func TestStartAndroidAVDCleansUpANewProcessWhenStartupIsCancelled(t *testing.T) 
 		)
 		errCh <- err
 	}()
+	var pid int
 	require.Eventually(t, func() bool {
-		_, err := os.Stat(pidFile)
-		return err == nil
-	}, 3*time.Second, 10*time.Millisecond, "emulator process did not start")
+		parsed, ok := readEmulatorPID(pidFile)
+		pid = parsed
+		return ok
+	}, 3*time.Second, 10*time.Millisecond, "emulator process did not write its pid")
 	cancel()
 	err := <-errCh
 	require.Error(t, err)
-	pidText, readErr := os.ReadFile(pidFile)
-	require.NoError(t, readErr)
-	pid, parseErr := strconv.Atoi(strings.TrimSpace(string(pidText)))
-	require.NoError(t, parseErr)
 	t.Cleanup(func() { _ = syscall.Kill(pid, syscall.SIGKILL) })
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
@@ -78,7 +91,7 @@ func TestStartAndroidAVDPreservesANewProcessAfterReadiness(t *testing.T) {
 			if discoveries == 1 {
 				return nil, nil
 			}
-			if _, err := os.Stat(pidFile); err != nil {
+			if _, ok := readEmulatorPID(pidFile); !ok {
 				return nil, nil
 			}
 			return []androidDevice{device}, nil
@@ -98,10 +111,8 @@ func TestStartAndroidAVDPreservesANewProcessAfterReadiness(t *testing.T) {
 	)
 	require.NoError(t, err)
 	assert.Equal(t, device, actual)
-	pidText, readErr := os.ReadFile(pidFile)
-	require.NoError(t, readErr)
-	pid, parseErr := strconv.Atoi(strings.TrimSpace(string(pidText)))
-	require.NoError(t, parseErr)
+	pid, ok := readEmulatorPID(pidFile)
+	require.True(t, ok, "emulator pid must be written before readiness")
 	t.Cleanup(func() { _ = syscall.Kill(pid, syscall.SIGKILL) })
 	require.NoError(t, syscall.Kill(pid, 0), "ready emulator must remain running")
 }
