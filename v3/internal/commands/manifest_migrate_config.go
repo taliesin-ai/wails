@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -176,7 +177,11 @@ func applyLegacyFrontendConfiguration(root, taskPackageManager string, report *M
 	if outputInfo, statErr := os.Stat(filepath.Join(frontend, "dist")); statErr == nil && !outputInfo.IsDir() {
 		blockMigration(report, "frontend-output", "frontend/dist", "", "frontend output path is not a directory")
 	} else if errors.Is(statErr, fs.ErrNotExist) {
-		blockMigration(report, "frontend-output", "frontend", "", "frontend/dist was not found; confirm the frontend build output directory")
+		// A fresh project has not been built yet, so the output directory is
+		// inferred from the Vite configuration instead.
+		if err := inferViteOutputDirectory(root, frontend, report, doc); err != nil {
+			return err
+		}
 	} else if statErr != nil {
 		return statErr
 	}
@@ -267,6 +272,55 @@ func applyLegacyFrontendConfiguration(root, taskPackageManager string, report *M
 	} else if statErr != nil && !errors.Is(statErr, fs.ErrNotExist) {
 		return statErr
 	}
+	return nil
+}
+
+// viteConfigFiles lists the Vite configuration names in lookup order.
+var viteConfigFiles = []string{"vite.config.ts", "vite.config.js", "vite.config.mts", "vite.config.mjs", "vite.config.cts", "vite.config.cjs"}
+
+// viteLiteralOutDir matches an outDir option whose value is a plain string literal.
+var viteLiteralOutDir = regexp.MustCompile(`outDir\s*:\s*['"]([^'"]+)['"]`)
+
+// inferViteOutputDirectory derives the frontend output directory for a project
+// whose frontend has not been built yet. Vite's default output is dist.
+func inferViteOutputDirectory(root, frontend string, report *MigrationReport, doc *manifest.Document) error {
+	configPath := ""
+	for _, name := range viteConfigFiles {
+		path := filepath.Join(frontend, name)
+		info, err := os.Stat(path)
+		if err == nil && !info.IsDir() {
+			configPath = path
+			break
+		}
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+	}
+	if configPath == "" {
+		report.Diagnostics = append(report.Diagnostics, MigrationDiagnostic{Severity: "info", Code: "frontend-output-default", File: "frontend", Message: "frontend/dist was not found and no Vite config exists; assumed Vite's default dist output directory"})
+		return nil
+	}
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return err
+	}
+	file := "frontend/" + filepath.Base(configPath)
+	if !strings.Contains(string(data), "outDir") {
+		report.Diagnostics = append(report.Diagnostics, MigrationDiagnostic{Severity: "info", Code: "frontend-output-default", File: file, Message: "frontend/dist was not found and the Vite config sets no outDir; assumed Vite's default dist output directory"})
+		return nil
+	}
+	match := viteLiteralOutDir.FindStringSubmatch(string(data))
+	if match == nil {
+		blockMigration(report, "frontend-output", file, "", "frontend/dist was not found and the Vite outDir is not a simple string literal; confirm the frontend build output directory")
+		return nil
+	}
+	candidate := filepath.ToSlash(filepath.Clean(filepath.Join("frontend", match[1])))
+	if _, err := manifest.ResolveProjectPath(root, "frontend output", candidate, false); err != nil {
+		blockMigration(report, "frontend-output", file, "", "Vite outDir must stay inside the project: "+err.Error())
+		return nil
+	}
+	recordMigrationSource(report, root, configPath)
+	doc.Frontend.OutputDirectory = candidate
 	return nil
 }
 

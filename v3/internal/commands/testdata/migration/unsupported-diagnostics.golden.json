@@ -143,12 +143,6 @@
     "diagnostics": [
       {
         "severity": "warning",
-        "code": "frontend-output",
-        "file": "frontend",
-        "message": "frontend/dist was not found; confirm the frontend build output directory"
-      },
-      {
-        "severity": "warning",
         "code": "frontend-script",
         "file": "frontend/package.json",
         "message": "required dev script is missing"
