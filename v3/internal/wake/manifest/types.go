@@ -166,6 +166,8 @@ type Build struct {
 	VCSInfo         bool              `json:"vcs_info"`
 	Environment     map[string]string `json:"environment,omitempty"`
 	Go              GoBuild           `json:"go"`
+	// Tidy runs `go mod tidy` in the project root before bindings and compilation.
+	Tidy bool `json:"tidy"`
 }
 
 type GoBuild struct {

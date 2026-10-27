@@ -97,6 +97,9 @@ func encodeConfigYAML(config Config, header string) ([]byte, error) {
 	yamlSet(build, "vcs_info", yamlBool(config.Build.VCSInfo))
 	yamlSet(build, "obfuscated", yamlBool(config.Build.Obfuscation))
 	yamlSetOptionalStringMap(build, "environment", config.Build.Environment)
+	if config.Build.Tidy || manifestValueWasExplicit(config.Origins, "build.tidy") {
+		yamlSet(build, "tidy", yamlBool(config.Build.Tidy))
+	}
 	yamlSetOptionalStrings(build, "garble_args", config.Build.Go.GarbleArgs, false)
 	yamlSetOptionalStrings(build, "ldflags", config.Build.Go.LinkerFlags, false)
 	yamlSetOptionalStrings(build, "compiler_flags", config.Build.Go.CompilerFlags, false)
@@ -104,6 +107,9 @@ func encodeConfigYAML(config Config, header string) ([]byte, error) {
 
 	dev := yamlMap()
 	yamlSetOptionalStrings(dev, "args", config.Dev.Args, config.Dev.ArgsSet)
+	if config.Dev.Port != 9245 || manifestValueWasExplicit(config.Origins, "dev.port") {
+		yamlSet(dev, "port", yamlInt(config.Dev.Port))
+	}
 	yamlSet(dev, "tags", yamlStrings(config.Dev.Tags))
 	yamlSet(dev, "debounce_ms", yamlInt(config.Dev.DebounceMS))
 	yamlSetString(dev, "log_level", config.Dev.LogLevel)

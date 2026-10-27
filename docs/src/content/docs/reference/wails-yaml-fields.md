@@ -38,6 +38,7 @@ Fields are listed using schema paths. Named maps use placeholders such as `targe
 | `build.output` | string | no | `bin` | `"bin"` |  | Project-relative output directory. |
 | `build.strip` | boolean | no | `true` | `true` |  | Strip debug information from production binaries. |
 | `build.tags` | list(string) | no | `[]` | `[]` |  | Additional Go build tags. |
+| `build.tidy` | boolean | no | `false` | `false` |  | Run go mod tidy in the project root before bindings generation and compilation. |
 | `build.trim_path` | boolean | no | `true` | `true` |  | Remove local filesystem paths from production binaries. |
 | `build.vcs_info` | boolean | no | `false` | `false` |  | Embed version-control metadata in the Go binary. |
 | `darwin` | object | no |  | `{}` |  | macOS platform settings. |
@@ -67,6 +68,7 @@ Fields are listed using schema paths. Named maps use placeholders such as `targe
 | `dev.exclude` | list(string) | no | `[".git",".wails","bin","node_modules","frontend/dist"]` | `["node_modules"]` |  | Development watcher exclusion patterns. |
 | `dev.grace_period_ms` | integer | no | `1500` | `1500` |  | Time allowed for a development process to stop cleanly. |
 | `dev.log_level` | string | no | `warn` | `"info"` |  | Development log verbosity. |
+| `dev.port` | integer | no | `9245` | `9245` |  | Development server port (1-65535); WAILS_VITE_PORT and --port take precedence. |
 | `dev.tags` | list(string) | no | `[]` | `[]` |  | Additional Go build tags. |
 | `dev.use_git_ignore` | boolean | no | `true` | `true` |  | Apply .gitignore rules to the development watcher. |
 | `dev.watch` | list(string) | no | `["**/*.go","wails.yaml"]` | `["**/*.go", "wails.yaml"]` |  | Development watcher inclusion patterns. |

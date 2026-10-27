@@ -92,10 +92,12 @@ type manifestBuild struct {
 	CompilerFlags *[]string          `manifest:"compiler_flags,optional" default:"[]"`
 	VCSInfo       *bool              `manifest:"vcs_info,optional" default:"false"`
 	Environment   *map[string]string `manifest:"environment,optional" default:"{}"`
+	Tidy          *bool              `manifest:"tidy,optional" default:"false"`
 }
 
 type manifestDev struct {
 	Args         *[]string `manifest:"args,optional"`
+	Port         *int      `manifest:"port,optional" default:"9245"`
 	Tags         *[]string `manifest:"tags,optional" default:"[]"`
 	DebounceMS   *int      `manifest:"debounce_ms,optional" default:"250"`
 	LogLevel     *string   `manifest:"log_level,optional" default:"warn"`
@@ -457,6 +459,7 @@ func applyBuild(target *Build, raw *manifestBuild) {
 	setStrings(&target.Go.CompilerFlags, raw.CompilerFlags)
 	setBool(&target.VCSInfo, raw.VCSInfo)
 	setStringMap(&target.Environment, raw.Environment)
+	setBool(&target.Tidy, raw.Tidy)
 }
 
 func applyDev(target *Dev, raw *manifestDev) {
@@ -464,6 +467,7 @@ func applyDev(target *Dev, raw *manifestDev) {
 		target.Args = append([]string{}, (*raw.Args)...)
 		target.ArgsSet = true
 	}
+	setInt(&target.Port, raw.Port)
 	setStrings(&target.Tags, raw.Tags)
 	setInt(&target.DebounceMS, raw.DebounceMS)
 	setInt(&target.GracePeriodMS, raw.GracePeriod)

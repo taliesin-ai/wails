@@ -133,7 +133,7 @@ func defaults(project Project) Document {
 	applyBuild(&build, buildRaw)
 	devRaw := &manifestDev{}
 	applySchemaDefaults(devRaw)
-	dev := Dev{Port: 9245}
+	dev := Dev{}
 	applyDev(&dev, devRaw)
 	targets := Targets{
 		Windows: defaultPlatform("amd64", "arm64"), Darwin: defaultPlatform("amd64", "arm64"),
@@ -236,6 +236,9 @@ func validateConfig(config Config) error {
 		if err := validateDevWatchPattern(pattern); err != nil {
 			return fieldValidationError("dev.watch", "item %d %q: %v", index, pattern, err)
 		}
+	}
+	if config.Dev.Port < 1 || config.Dev.Port > 65535 {
+		return fieldValidationError("dev.port", "must be between 1 and 65535, got %d", config.Dev.Port)
 	}
 	for name, value := range map[string]string{
 		"project.icon":             config.Project.Icon,

@@ -13,11 +13,15 @@ import (
 	"io"
 	"maps"
 	"net"
+	"os"
 	"runtime"
 	"strconv"
 	"sync"
 	"time"
 )
+
+// vitePortEnvironment overrides dev.port; the --port flag takes precedence over it.
+const vitePortEnvironment = "WAILS_VITE_PORT"
 
 type Options struct {
 	Host            string
@@ -135,10 +139,7 @@ func Run(ctx context.Context, options Options, ops Operations) (resultErr error)
 	if options.Plan {
 		return ops.Plan(loaded, goos, goarch, appArgs)
 	}
-	port := options.VitePort
-	if port == 0 {
-		port = 9245
-	}
+	port := ResolveVitePort(options.VitePort, os.Getenv(vitePortEnvironment), loaded.Config.Dev.Port)
 	host := options.Host
 	if host == "" {
 		host = "127.0.0.1"

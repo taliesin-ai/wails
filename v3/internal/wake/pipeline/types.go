@@ -31,6 +31,7 @@ const (
 	PublishArtifact             NodeKind = "PublishArtifact"
 	CollectArtifacts            NodeKind = "CollectArtifacts"
 	RunHook                     NodeKind = "RunHook"
+	TidyGoModules               NodeKind = "TidyGoModules"
 )
 
 type Scope string
@@ -208,6 +209,10 @@ type InstallSpec struct {
 	Arguments                   []string
 	Environment                 map[string]string
 }
+
+// TidySpec runs `go mod tidy` in the project root. It has no fields: the
+// project root is the only input, and it is carried by the plan itself.
+type TidySpec struct{}
 type BindingsSpec struct {
 	Config     manifest.Bindings
 	Tags       []string
@@ -292,6 +297,7 @@ type HookSpec struct {
 }
 
 func (InstallSpec) nodeSpec()  {}
+func (TidySpec) nodeSpec()     {}
 func (BindingsSpec) nodeSpec() {}
 func (FrontendSpec) nodeSpec() {}
 func (CompileSpec) nodeSpec()  {}
@@ -450,6 +456,9 @@ func validNodeSpec(node Node) bool {
 		return ok
 	case RunHook:
 		_, ok := node.Spec.(HookSpec)
+		return ok
+	case TidyGoModules:
+		_, ok := node.Spec.(TidySpec)
 		return ok
 	default:
 		return false

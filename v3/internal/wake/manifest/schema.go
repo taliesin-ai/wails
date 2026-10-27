@@ -150,6 +150,8 @@ var schemaAttributeDescriptions = map[string]string{
 	"copyright":            "Copyright notice embedded in artifacts.",
 	"credential":           "Named external credential reference; never secret material.",
 	"debounce_ms":          "Delay used to coalesce development file changes.",
+	"port":                 "Development server port (1-65535); WAILS_VITE_PORT and --port take precedence.",
+	"tidy":                 "Run go mod tidy in the project root before bindings generation and compilation.",
 	"dependencies":         "Native package dependencies.",
 	"description":          "Human-readable description.",
 	"desktop_entry":        "User-owned Linux desktop-entry file.",
