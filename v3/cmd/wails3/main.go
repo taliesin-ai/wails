@@ -38,6 +38,30 @@ func main() {
 	if os.Getenv("WAILS_MCP_CHILD") == "1" {
 		commands.DisableFooter = true
 	}
+	app := newApp(applicationArgs)
+	defer printFooter()
+
+	err := app.Run()
+	if err != nil {
+		if code, ok := commands.ApplicationExitCode(err); ok {
+			os.Exit(code)
+		}
+		// A wake build failure is already rendered as a clean panel by the build
+		// reporter; printing the raw error again would duplicate it.
+		if !wake.IsReported(err) {
+			if diagnostic, ok := manifest.FormatValidationDiagnostics(err); ok {
+				pterm.Error.Println("Invalid wails.yaml\n" + diagnostic)
+			} else {
+				pterm.Error.Println(err)
+			}
+		}
+		os.Exit(1)
+	}
+}
+
+// newApp builds the complete command tree. applicationArgs are forwarded to
+// the application started by run and dev.
+func newApp(applicationArgs []string) *clir.Cli {
 	app := clir.NewCli("wails", "The Wails3 CLI", "v3")
 	app.NewSubCommand("docs", "Open the docs").Action(openDocs)
 	app.NewSubCommandFunction("init", "Initialise a new project", commands.Init)
@@ -186,7 +210,12 @@ func main() {
 	})
 
 	// Setup commands
-	setup := app.NewSubCommandFunction("setup", "Project setup wizards", commands.Setup)
+	// NewSubCommandFunction on the root Cli returns the Cli, not a child, so
+	// setup is created with NewSubCommand to make its subcommands true children.
+	setup := app.NewSubCommand("setup", "Project setup wizards")
+	setup.Action(func() error {
+		return commands.Setup(&commands.SetupOptions{})
+	})
 	setupSigning := setup.NewSubCommand("signing", "Configure code signing")
 	var setupSigningFlags flags.SigningSetup
 	setupSigning.AddFlags(&setupSigningFlags)
@@ -206,6 +235,24 @@ func main() {
 	setupDocker.AddFlags(&setupDockerFlags)
 	setupDocker.Action(func() error {
 		return commands.SetupDocker(&setupDockerFlags)
+	})
+
+	// Legacy top-level aliases for signing and entitlements, which were
+	// previously registered at the top level by this same bug. Hidden from help.
+	legacySigning := app.NewSubCommand("signing", "Configure code signing")
+	legacySigning.Hidden()
+	var legacySigningFlags flags.SigningSetup
+	legacySigning.AddFlags(&legacySigningFlags)
+	legacySigning.Action(func() error {
+		return commands.SigningSetup(&legacySigningFlags)
+	})
+
+	legacyEntitlements := app.NewSubCommand("entitlements", "Configure macOS entitlements")
+	legacyEntitlements.Hidden()
+	var legacyEntitlementsFlags flags.EntitlementsSetup
+	legacyEntitlements.AddFlags(&legacyEntitlementsFlags)
+	legacyEntitlements.Action(func() error {
+		return commands.EntitlementsSetup(&legacyEntitlementsFlags)
 	})
 
 	// Sign command (wrapper that calls platform-specific tasks)
@@ -275,24 +322,7 @@ func main() {
 	app.NewSubCommandFunction("version", "Print the version", commands.Version)
 	app.NewSubCommand("sponsor", "Sponsor the project").Action(openSponsor)
 
-	defer printFooter()
-
-	err := app.Run()
-	if err != nil {
-		if code, ok := commands.ApplicationExitCode(err); ok {
-			os.Exit(code)
-		}
-		// A wake build failure is already rendered as a clean panel by the build
-		// reporter; printing the raw error again would duplicate it.
-		if !wake.IsReported(err) {
-			if diagnostic, ok := manifest.FormatValidationDiagnostics(err); ok {
-				pterm.Error.Println("Invalid wails.yaml\n" + diagnostic)
-			} else {
-				pterm.Error.Println(err)
-			}
-		}
-		os.Exit(1)
-	}
+	return app
 }
 
 func printFooter() {
