@@ -4,6 +4,7 @@ type Build struct {
 	Common
 	Tags       string `name:"tags" description:"Additional build tags to pass to the Go compiler (comma-separated)"`
 	Obfuscated bool   `name:"obfuscated" description:"Build with garble and stable obfuscated binding IDs"`
+	Dev        bool   `name:"dev" description:"Build a development binary (no production tag, no inlining, no strip or trimpath) and publish it to the output directory"`
 	GarbleArgs string `name:"garble-args" description:"Additional arguments to pass to garble before the build command"`
 	Profile    string `name:"profile" description:"Deprecated: specify the profile as the first build argument"`
 	Targets    string `name:"targets" description:"Comma-separated platform/architecture targets (for example darwin/arm64,linux/amd64)"`

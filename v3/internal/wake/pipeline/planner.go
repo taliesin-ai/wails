@@ -18,6 +18,11 @@ func PlanBuild(config manifest.Config, request Request) (Plan, error) {
 	if request.Verb == "" {
 		request.Verb = "build"
 	}
+	if request.DevBuild {
+		// A development publication uses the development compile policy and
+		// therefore always carries the Development flag.
+		request.Development = true
+	}
 	if request.Server {
 		if err := validateServerRequest(config, request); err != nil {
 			return Plan{}, err
@@ -263,6 +268,10 @@ func planTarget(config manifest.Config, request Request, multiTarget bool) (Plan
 	if request.Development {
 		generatedRoot = filepath.Join(".wails", "dev", targetDirectory)
 	}
+	// devSession is the wails3 dev placement and HMR policy: the output stays in the
+	// development root and no publication happens. A development publication
+	// (build --dev) shares the development compile policy but publishes normally.
+	devSession := request.Development && !request.DevBuild
 	assetsOut := filepath.ToSlash(filepath.Join(generatedRoot, "assets"))
 	binaryName := config.Project.BinaryName
 	if request.Server {
@@ -274,14 +283,14 @@ func planTarget(config manifest.Config, request Request, multiTarget bool) (Plan
 	// Server builds are plain binaries even on platforms whose GUI builds are app bundles.
 	appBundle := capability.Runnable == runnableApp && !request.Server
 	finalBinaryDirectory := config.Build.OutputDirectory
-	if request.Development {
+	if devSession {
 		finalBinaryDirectory = generatedRoot
 	} else if multiTarget {
 		finalBinaryDirectory = filepath.Join(finalBinaryDirectory, strings.ReplaceAll(target, "/", "-"))
 	}
 	finalBinaryOut := filepath.ToSlash(filepath.Join(finalBinaryDirectory, binaryName))
 	binaryOut := filepath.ToSlash(filepath.Join(generatedRoot, "artifacts", binaryName))
-	if request.Development {
+	if devSession {
 		binaryOut = finalBinaryOut
 	}
 	if request.TargetOS == "ios" {
@@ -362,7 +371,11 @@ func planTarget(config manifest.Config, request Request, multiTarget bool) (Plan
 		tags = appendUnique(tags, request.ExtraTags...)
 	}
 	obfuscated := false
-	if !request.Development {
+	if request.DevBuild {
+		// Development publications obfuscate only on explicit request, as the
+		// Taskfile DEV+OBFUSCATED build did; manifest defaults do not apply.
+		obfuscated = request.Obfuscated
+	} else if !request.Development {
 		obfuscated = config.Build.Obfuscation
 		if targetSettings.ObfuscatedSet {
 			obfuscated = targetSettings.Obfuscated
@@ -397,7 +410,7 @@ func planTarget(config manifest.Config, request Request, multiTarget bool) (Plan
 	var tidy NodeKey
 	if config.Build.Tidy {
 		tidyInputs := []InputSpec{{Label: "go-module", Files: goMetadataFiles(config.Root)}}
-		if !request.Development {
+		if !devSession {
 			tidyExcludeDirs := []string{".git", ".wails", "bin", "build", "dist", "node_modules"}
 			if !config.Frontend.Disabled {
 				tidyExcludeDirs = append(tidyExcludeDirs, config.Frontend.Directory)
@@ -430,7 +443,7 @@ func planTarget(config manifest.Config, request Request, multiTarget bool) (Plan
 			frontendExclude = strings.TrimPrefix(strings.TrimPrefix(frontendExclude, config.Frontend.Directory), "/")
 		}
 		frontendInputs := []InputSpec{{Label: "frontend-source", Root: config.Frontend.Directory, IncludeAll: true, ExcludeDirs: []string{".git", ".wails", "node_modules", config.Frontend.Bindings.OutputDirectory, frontendExclude}}}
-		if request.Development {
+		if devSession {
 			// The persistent frontend Dev process owns source changes through HMR.
 			// The finite frontend Node only bootstraps an embeddable output for Go;
 			// keeping source out of its Action Key prevents a later backend edit from
@@ -484,7 +497,10 @@ func planTarget(config manifest.Config, request Request, multiTarget bool) (Plan
 	}
 	trimPath, strip := config.Build.TrimPath, config.Build.Strip
 	if request.Development {
-		linkerFlags, garbleArgs = nil, nil
+		linkerFlags = nil
+		if !request.DevBuild {
+			garbleArgs = nil
+		}
 		// Development builds disable inlining (as the Taskfile dev builds did) so
 		// debuggers match the source. A per-target compiler_flags setting still
 		// wins; finite build policy never reaches the Dev Plan.
@@ -566,7 +582,7 @@ func planTarget(config manifest.Config, request Request, multiTarget bool) (Plan
 		assemblyDependencies = append(assemblyDependencies, assets)
 		finalOutput := runnableOutput(config, request.TargetOS, request.TargetArch, capability, multiTarget)
 		output := filepath.ToSlash(filepath.Join(generatedRoot, "artifacts", filepath.Base(finalOutput)))
-		if request.Development {
+		if devSession {
 			output = filepath.ToSlash(filepath.Join(".wails", "dev", request.TargetOS+"-"+request.TargetArch, filepath.Base(finalOutput)))
 		}
 		packageConfig := registeredPackageFormat(config.Package, request.TargetOS, "app")
@@ -582,7 +598,7 @@ func planTarget(config manifest.Config, request Request, multiTarget bool) (Plan
 	formats := append([]string(nil), request.Formats...)
 	if len(formats) == 0 {
 		if !request.sign {
-			if !request.Development {
+			if !devSession {
 				destination := finalBinaryOut
 				if appBundle {
 					destination = runnableOutput(config, request.TargetOS, request.TargetArch, capability, multiTarget)
@@ -598,7 +614,7 @@ func planTarget(config manifest.Config, request Request, multiTarget bool) (Plan
 			}
 			plan.Artifacts = []NodeKey{lastRunnable}
 			plan.Roots = []NodeKey{lastRunnable}
-			if request.Development && afterBuild != "" && !appBundle {
+			if devSession && afterBuild != "" && !appBundle {
 				plan.Roots = []NodeKey{afterBuild}
 				plan.Artifacts = []NodeKey{lastRunnable}
 			}
@@ -614,7 +630,7 @@ func planTarget(config manifest.Config, request Request, multiTarget bool) (Plan
 		}
 		signed := add(Node{Key: NodeKey(string(lastRunnable) + ":sign"), Kind: SignArtifact, Label: "Sign " + filepath.Base(input), Scope: TargetScope, Dependencies: appendUniqueKeys(nil, beforeSignDeps...), Spec: SignSpec{TargetOS: request.TargetOS, TargetArch: request.TargetArch, Format: plan.Nodes[lastRunnable].Artifact.DisplayKind(), Input: input, Config: signingPlatformForPlan(config.Signing, request.TargetOS, assetsOut)}, Output: input + ".signed", Cache: CacheNever, Claims: ResourceClaims{CPU: 1, MemoryMB: 256, Exclusive: "sign"}, EstimateMS: 1000, Artifact: identity})
 		afterSign := hookNode(manifest.AfterSign, TargetScope, plan.Nodes[signed].Output, []NodeKey{signed})
-		if !request.Development {
+		if !devSession {
 			destination := finalBinaryOut
 			if appBundle {
 				destination = runnableOutput(config, request.TargetOS, request.TargetArch, capability, multiTarget)
@@ -630,7 +646,7 @@ func planTarget(config manifest.Config, request Request, multiTarget bool) (Plan
 		}
 		plan.Artifacts = []NodeKey{signed}
 		plan.Roots = []NodeKey{signed}
-		if request.Development && afterSign != "" {
+		if devSession && afterSign != "" {
 			plan.Roots = []NodeKey{afterSign}
 			plan.Artifacts = []NodeKey{signed}
 		}
