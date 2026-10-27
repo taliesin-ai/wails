@@ -231,12 +231,17 @@ func main() {
 	ios := app.NewSubCommand("ios", "iOS tooling")
 	ios.NewSubCommandFunction("overlay:gen", "Generate Go overlay for iOS bridge shim", commands.IOSOverlayGen)
 	ios.NewSubCommandFunction("xcode:gen", "Generate Xcode project in output directory", commands.IOSXcodeGen)
+	if features.WakeEnabled() {
+		ios.NewSubCommandFunction("devices", "List iOS simulators and connected physical devices", commands.IOSDevices)
+		ios.NewSubCommandFunction("logs", "Stream iOS Simulator logs filtered to this app", commands.IOSLogs)
+	}
 
 	// Android tools
 	android := app.NewSubCommand("android", "Android tooling")
 	android.NewSubCommandFunction("overlay:gen", "Generate Go overlay that registers the Android main", commands.AndroidOverlayGen)
 	if features.WakeEnabled() {
 		android.NewSubCommandFunction("devices", "List connected Android devices and emulators", commands.AndroidDevices)
+		android.NewSubCommandFunction("logs", "Stream Android logcat filtered to this app", commands.AndroidLogs)
 		androidRun := android.NewSubCommand("run", "Build, install and launch a development APK")
 		var androidRunOptions commands.AndroidRunOptions
 		androidRun.AddFlags(&androidRunOptions)

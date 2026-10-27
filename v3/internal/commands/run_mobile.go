@@ -13,6 +13,9 @@ import (
 	"github.com/wailsapp/wails/v3/internal/wake/pipeline"
 )
 
+// iosPhysicalDeviceLister is replaceable in tests so run-target selection does not need devicectl.
+var iosPhysicalDeviceLister = listIOSPhysicalDevices
+
 func configureRunTarget(options *RunOptions, goos, arch string, settings manifest.Run, build *manifestRunOptions) error {
 	switch goos {
 	case "android":
@@ -38,7 +41,21 @@ func configureRunTarget(options *RunOptions, goos, arch string, settings manifes
 		}
 		if options.Destination == "device" {
 			if options.Device == "" {
-				return fmt.Errorf("physical iOS run requires --device")
+				if options.Plan {
+					return fmt.Errorf("physical iOS run requires --device")
+				}
+				// Plan mode never queries devices; an attached run picks the only connected one.
+				ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+				defer cancel()
+				devices, err := iosPhysicalDeviceLister(ctx)
+				if err != nil {
+					return fmt.Errorf("physical iOS run requires --device and connected device discovery failed: %w", err)
+				}
+				device, err := chooseIOSRunDevice(devices)
+				if err != nil {
+					return err
+				}
+				options.Device = device
 			}
 			// Keep credentials in the normal signing configuration; only select the outcome here.
 			build.Loaded.Config.Selected = manifest.Profile{Name: "_wails_run_device", Targets: []manifest.ProfileTarget{{Target: goos + "/" + arch, Destination: "device", Sign: true}}}
