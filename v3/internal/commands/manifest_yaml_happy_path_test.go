@@ -330,7 +330,8 @@ if [ "$1" = "run" ]; then mkdir -p dist; printf bundle > dist/index.html; fi
 	t.Setenv("PATH", fakeTools+string(os.PathListSeparator)+os.Getenv("PATH"))
 
 	require.NoError(t, SignWrapper(&flags.SignWrapper{Profile: "release"}, nil))
-	assert.FileExists(t, filepath.Join(root, "bin", "command_1.0.0_amd64.deb.signed"))
+	assert.FileExists(t, filepath.Join(root, "bin", "command_1.0.0_amd64.deb"))
+	assert.NoFileExists(t, filepath.Join(root, "bin", "command_1.0.0_amd64.deb.signed"))
 	assert.FileExists(t, filepath.Join(root, "frontend", "dist", "index.html"))
 }
 

@@ -263,6 +263,9 @@ type PackageSpec struct {
 	Capabilities                                         []string
 	Associations                                         []manifest.Association
 	Protocols                                            []manifest.Protocol
+	// AdhocSign asks app assembly to ad-hoc sign the bundle on darwin hosts.
+	// It is set only when the pipeline will not sign the bundle with an identity.
+	AdhocSign bool
 }
 type SignSpec struct {
 	TargetOS, TargetArch, Format, Input string

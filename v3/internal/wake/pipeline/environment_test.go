@@ -500,10 +500,25 @@ func TestCurrentHostPlanningDiscoversConfiguredFrontendExecutable(t *testing.T) 
 	require.ErrorContains(t, err, "missing-manager")
 }
 
-func TestSignedWindowsPublicationsRetainFileExtensions(t *testing.T) {
-	for _, path := range []string{"bin/app.exe", "bin/app.msix"} {
-		got := signedPublicationPath(path, "windows")
-		assert.Equal(t, filepath.Ext(path), filepath.Ext(got))
-		assert.NotEqual(t, path, got)
-	}
+func TestSignedArtifactsPublishUnderTheirNormalNames(t *testing.T) {
+	config := testConfig(t)
+	config.Signing.Linux.Enabled = true
+	config.Signing.Linux.Certificate = "release@example.com"
+	plan, err := PlanBuild(config, Request{Verb: "sign", TargetOS: "linux", TargetArch: "amd64", Formats: []string{"deb"}})
+	require.NoError(t, err)
+	publish := plan.Nodes["publish:linux/amd64:deb:sign"]
+	spec, ok := publish.Spec.(PublishSpec)
+	require.True(t, ok)
+	assert.True(t, strings.HasSuffix(spec.Destination, ".deb"), spec.Destination)
+	assert.NotContains(t, spec.Destination, ".signed")
+	assert.Equal(t, spec.Destination, publish.Output)
+	// The private signing stage keeps its own identity, distinct from the published name.
+	assert.Contains(t, plan.Nodes["package:linux/amd64:deb:sign"].Output, ".signed")
+}
+
+func TestAdhocSigningOnlyWhenPipelineWillNotSignBundle(t *testing.T) {
+	assert.True(t, adhocSignsBundle("darwin", false))
+	assert.False(t, adhocSignsBundle("darwin", true))
+	assert.False(t, adhocSignsBundle("linux", false))
+	assert.False(t, adhocSignsBundle("windows", false))
 }

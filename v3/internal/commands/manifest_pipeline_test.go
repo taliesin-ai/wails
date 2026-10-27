@@ -166,7 +166,7 @@ func TestPlanDocumentIsDerivedEntirelyFromTheResolvedImmutablePlan(t *testing.T)
 	assert.Equal(t, []string{"linux/amd64"}, first.Request.Targets)
 	assert.Equal(t, []string{"deb"}, first.Request.Formats)
 	require.Len(t, first.Artifacts, 1)
-	assert.Equal(t, manifestPlanArtifact{Target: "linux/amd64", Format: "deb", Kind: "deb", Path: "bin/app_1.2.3_amd64.deb.signed", Signed: true}, first.Artifacts[0])
+	assert.Equal(t, manifestPlanArtifact{Target: "linux/amd64", Format: "deb", Kind: "deb", Path: "bin/app_1.2.3_amd64.deb", Signed: true}, first.Artifacts[0])
 	for _, operation := range first.Operations {
 		if operation.Cache == string(pipeline.CacheNever) {
 			assert.Equal(t, "run", operation.Decision)
