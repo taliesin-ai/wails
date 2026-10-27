@@ -2602,7 +2602,7 @@ func (h *manifestHandler) packageNSIS(ctx context.Context, s pipeline.PackageSpe
 		args = append(args, "-DWAILS_INSTALL_SCOPE="+s.Config.InstallScope)
 	}
 	args = append(args, "project.nsi")
-	result, err := runManifestCommand(ctx, dir, nil, "makensis", args...)
+	result, err := runManifestCommandWithEnvironment(ctx, dir, nsisEnvironment(os.Environ(), runtime.GOOS, nsisLocaleSupported), "makensis", args...)
 	if err != nil {
 		return pipeline.RunResult{Detail: result}, err
 	}
