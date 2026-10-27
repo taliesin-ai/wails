@@ -96,6 +96,12 @@ func main() {
 
 		clean := app.NewSubCommand("clean", "Remove disposable Wails-generated build state")
 		clean.Action(func() error { return commands.Clean(clean.OtherArgs()) })
+
+		server := app.NewSubCommand("server", "Server-mode tooling")
+		serverDocker := server.NewSubCommand("docker", "Build a Docker image for the server-mode binary (run with -run to start it)")
+		serverDockerOptions := commands.NewServerDockerOptions()
+		serverDocker.AddFlags(&serverDockerOptions)
+		serverDocker.Action(func() error { return commands.ServerDocker(&serverDockerOptions, serverDocker.OtherArgs()) })
 	}
 
 	packageDescription := "Package the project"

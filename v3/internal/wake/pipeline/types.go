@@ -194,6 +194,9 @@ type Request struct {
 	ExtraTags   []string
 	GarbleArgs  []string
 	Obfuscated  bool
+	// Server plans a server-mode build (Go tag "server", no GUI, no platform
+	// assets, no packaging). Its binary is named <binary>-server[.exe].
+	Server      bool
 	resolved    bool
 	sign        bool
 	notarize    bool
@@ -236,10 +239,12 @@ type CompileSpec struct {
 	LocalRoots                                   []string
 	Production, Obfuscated, TrimPath, Strip      bool
 	VCSInfo                                      bool
-	Toolchain                                    string
-	ContainerRuntime                             string
-	ContainerImage                               string
-	Environment                                  map[string]string
+	// Server marks a server-mode compile: CGO defaults off and no GUI overlays apply.
+	Server           bool
+	Toolchain        string
+	ContainerRuntime string
+	ContainerImage   string
+	Environment      map[string]string
 }
 type MergeSpec struct {
 	Inputs []string

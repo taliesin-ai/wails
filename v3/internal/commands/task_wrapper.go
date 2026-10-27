@@ -100,6 +100,9 @@ func buildWithOperations(buildFlags *flags.Build, otherArgs []string, operations
 	if err != nil {
 		return err
 	}
+	if buildFlags.Server && !active {
+		return fmt.Errorf("--server requires a wails.yaml project with WAILS_EXP_USE_WAKE=1")
+	}
 	if active {
 		garbleArgs, err := shlex.Split(buildFlags.GarbleArgs)
 		if err != nil {
@@ -121,7 +124,7 @@ func buildWithOperations(buildFlags *flags.Build, otherArgs []string, operations
 		if len(formats) > 0 {
 			verb = "package"
 		}
-		options := manifestRunOptions{Verb: verb, Profile: profile, Targets: targets, Formats: formats, Force: buildFlags.Force, Obfuscated: buildFlags.Obfuscated, Tags: splitComma(buildFlags.Tags), GarbleArgs: garbleArgs}
+		options := manifestRunOptions{Verb: verb, Profile: profile, Targets: targets, Formats: formats, Force: buildFlags.Force, Obfuscated: buildFlags.Obfuscated, Server: buildFlags.Server, Tags: splitComma(buildFlags.Tags), GarbleArgs: garbleArgs}
 		if buildFlags.Plan {
 			return operations.plan(options, buildFlags.JSON)
 		}
