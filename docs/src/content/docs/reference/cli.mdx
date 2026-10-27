@@ -74,7 +74,7 @@ wails3 <command> --help
 | `wails3 sign [GOOS=…]` | Wrapper that runs the platform-specific `*:sign` Taskfile task for the current OS (or the one specified via `GOOS`). |
 | `wails3 tool sign` | Low-level direct signing entry point. Flags: `--input`, `--output`, `--verbose`, `--certificate`, `--password`, `--thumbprint`, `--timestamp`, `--identity`, `--entitlements`, `--hardened-runtime`, `--notarize`, `--keychain-profile`, `--pgp-key`, `--pgp-password`, `--role`. |
 
-There is **no** `wails3 signing` subcommand, for keychain credentials use `xcrun notarytool store-credentials`, and for PGP keys use `gpg` directly (the `wails3 setup signing` wizard automates both).
+Signing setup lives under `wails3 setup signing`, and macOS entitlements under `wails3 setup entitlements`. The top-level `wails3 signing` and `wails3 entitlements` commands are hidden aliases, so prefer the `setup` forms. For keychain credentials use `xcrun notarytool store-credentials`, and for PGP keys use `gpg` directly (the `wails3 setup signing` wizard automates both).
 
 ## Tools
 

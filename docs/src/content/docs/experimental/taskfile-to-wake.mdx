@@ -150,7 +150,7 @@ the Taskfile for those until the gap is closed.
 | `package:universal` | `wails3 build --targets darwin/universal` with `formats: [app]` | |
 | `package:dmg`, `create:dmg` | Profile target `formats: [dmg]` with `packages.dmg.*` | See the DMG variables below. |
 | `codesign:adhoc`, `codesign:skip` | Automatic | Bundles are ad-hoc sealed unless the target is signed. |
-| `run` | `wails3 run` | Gap: wake does not yet use `build/darwin/Info.dev.plist` for `run`. |
+| `run` | `wails3 dev` for a development session, `wails3 run` for a production build | `wails3 dev` uses `build/darwin/Info.dev.plist`. `wails3 run` is a production build by design. |
 | `sign` | Profile target `sign: true` with `darwin.signing.*`, then `wails3 build <profile>` | `wails3 sign` is deprecated. |
 | `sign:notarize` | Profile target `sign: true` and `notarize: true` with `darwin.notarization.credential` | Requires a signed target. |
 
@@ -159,14 +159,14 @@ the Taskfile for those until the gap is closed.
 | Taskfile task | Wake command or setting | Notes |
 | ------------- | ----------------------- | ----- |
 | `build`, `build:native`, `build:docker` | `wails3 build --targets linux/amd64` | Cross-compilation uses the wails-cross image, set up with `wails3 setup docker`. |
-| `package` | Profile target `formats: [appimage, deb, rpm, archlinux]` | Set the formats explicitly. The wake default is `appimage` only. Gap: default formats differ from the Taskfile. |
+| `package` | `linux.formats: [appimage, deb, rpm, archlinux]` | `wails3 migrate` sets this automatically. Without it, wake defaults to `appimage` only. |
 | `create:appimage` | Format `appimage` | Builds on a Linux host only. |
 | `create:deb`, `generate:deb` | Format `deb` with `packages.deb.*` | |
 | `create:rpm`, `generate:rpm` | Format `rpm` with `packages.rpm.*` | |
 | `create:aur`, `generate:aur` | Format `archlinux` | The Taskfile name is `aur`. The wake format is `archlinux`. |
 | `generate:dotdesktop` | Automatic | Uses `linux.desktop_entry` when you supply one. |
 | `run` | `wails3 run` | |
-| `sign:deb`, `sign:rpm`, `sign:packages` | `linux.signing.certificate` (the PGP key identifier) with profile `sign: true` | Passwords come from the keychain set up by `wails3 setup signing`. |
+| `sign:deb`, `sign:rpm`, `sign:packages` | `linux.signing.certificate` (the PGP key identifier) with profile `sign: true` | Passwords come from the keychain set up by `wails3 setup signing`. The manifest has no DEB signing role field. See `SIGN_ROLE` below. |
 
 ### Windows (build/windows/Taskfile.yml)
 
@@ -194,28 +194,29 @@ the Taskfile for those until the gap is closed.
 | `deploy-simulator` | `wails3 run` | Simulator is the default destination. |
 | `deploy-device` | `wails3 run --destination device --device <UDID>` | Needs `ios.signing.*`. |
 | `run` | `wails3 dev` or `wails3 run` | |
-| `ensure-simulator` | Gap | Boot the simulator from Xcode or Simulator.app. |
+| `ensure-simulator` | Automatic in `wails3 run` and `wails3 dev` | If no simulator is booted, wake boots the newest iPhone, creating one if none exists. |
 | `xcode` | `wails3 ios xcode` | Writes `.wails/ide/ios/xcode`. |
 | `logs`, `logs:dev` | `wails3 ios logs` | Filtered to the app. |
-| `logs:wide` | Gap | Use `xcrun simctl` directly. |
+| `logs:wide` | `wails3 ios logs -wide` | |
 
 ### Android (build/android/Taskfile.yml)
 
 | Taskfile task | Wake command or setting | Notes |
 | ------------- | ----------------------- | ----- |
 | `install:deps` | `wails3 doctor` | |
-| `build`, `assemble:apk` | `wails3 android run` | Builds the debug APK, installs it and launches it. Gap: no standalone debug APK output. |
+| `build`, `assemble:apk` | `wails3 android run` | Builds the debug APK, installs it and launches it. Add `--no-launch` to install without launching. `--dev` cannot be combined with `--formats`, so use `android run` for a debug APK. |
 | `compile:go:shared`, `compile:go:all-archs`, `generate:android:overlay`, `generate:android:bindings` | Automatic | `wails3 android overlay:gen` remains available. |
-| `package`, `package:fat` | Profile target `formats: [aab]` | Gap: wake does not yet produce a release APK. Use AAB. |
+| `package`, `package:fat` | `wails3 build --targets android/arm64 --formats apk` (use `android/universal` for all ABIs) | Release APK. Without `android.signing` the APK is signed with the debug keystore and wake prints a warning. Set `android.signing.certificate`, `key_alias` and `credential` for release signing. |
 | `bundle`, `bundle:fat`, `assemble:aab`, `assemble:aab:release` | Profile target `formats: [aab]` with `sign: true` | |
-| `assemble:apk:release`, `deploy-emulator` (release APK) | Gap | |
-| `ensure-emulator` | `wails3 android run --emulator <AVD_NAME>` | Starts the AVD if it is not running. |
-| `run`, `deploy-emulator` | `wails3 android run --emulator <AVD_NAME>` | |
+| `assemble:apk:release` | `wails3 build --targets android/arm64 --formats apk` | Same as `package`. |
+| `ensure-emulator` | Automatic in `wails3 android run` | If no device is connected, wake starts the first AVD non-interactively. |
+| `run` | `wails3 android run --emulator <AVD_NAME>` | |
+| `deploy-emulator` | `wails3 android run --apk <file> --emulator <AVD_NAME>` | Installs a prebuilt APK from `wails3 build --formats apk`. |
 | `device:list` | `wails3 android devices` | Lists devices and emulators. |
 | `run:device`, `deploy-device` | `wails3 android run --device <SERIAL>` | |
 | `studio` | `wails3 android studio` | Writes `.wails/ide/android`. |
 | `logs` | `wails3 android logs` | Filtered to the app. |
-| `logs:all` | Gap | |
+| `logs:all` | `wails3 android logs -all` | |
 | `clean` | `wails3 clean` | Removes Wails-generated build state. |
 
 ## Mapping for Taskfile variables
@@ -234,7 +235,7 @@ setting should be saved in the project.
 | `PACKAGE_MANAGER` | `frontend.install`, `frontend.build`, `frontend.dev` | Write the full command arrays. |
 | `VITE_PORT`, `WAILS_VITE_PORT` | `dev.port`, `wails3 dev -port` | The `WAILS_VITE_PORT` environment variable and `-port` take precedence over `dev.port`. |
 | `ARCH`, `GOOS` | `--targets <os>/<arch>` | For example `--targets linux/arm64`. Use `darwin/universal` for a universal macOS binary. |
-| `DEV` | `wails3 dev` | Development builds are produced by `dev`. `build` has no development flag. Gap: no standalone development binary. |
+| `DEV` | `wails3 build --dev` | Development binary or app bundle, with the development settings. `wails3 dev` runs the watcher. `--dev` cannot be combined with `--formats`. |
 | `OBFUSCATED` | `--obfuscated`, `build.obfuscated`, `targets.<os>/<arch>.obfuscated` | |
 | `GARBLE_ARGS` | `--garble-args`, `build.garble_args` | |
 | `EXTRA_TAGS` | `--tags`, `build.tags`, `targets.<os>/<arch>.tags` | Comma-separated on the command line. |
@@ -262,7 +263,7 @@ setting should be saved in the project.
 | `SIGN_THUMBPRINT` | `windows.signing.thumbprint` | |
 | `TIMESTAMP_SERVER` | `windows.signing.timestamp_server` | |
 | `PGP_KEY` | `linux.signing.certificate` | The PGP key identifier. |
-| `SIGN_ROLE` | Gap | No manifest field yet. |
+| `SIGN_ROLE` | No manifest field | The manifest has no DEB signing role. Sign directly with `wails3 tool sign --role <origin, maint, archive or builder>`. |
 | `CODESIGN_IDENTITY` | `darwin.signing.identity` or `ios.signing.identity` | |
 | `ENTITLEMENTS_FILE` | `darwin.signing.entitlements` | |
 | `PROVISIONING_PROFILE` | `ios.signing.provisioning_profile` | |
@@ -299,17 +300,61 @@ setting should be saved in the project.
 | `CROSS_IMAGE` | Not configurable | Build or pull the image with `wails3 setup docker`. |
 | `DOCKER_MOUNTS`, `DOCKER_ARCH` | Automatic | |
 
-## Known gaps
+## Migrate a customised Taskfile
 
-These are the gaps that remain on this branch. The tables above name each one
-where it applies.
+`wails3 migrate` compares your Taskfiles with the stock generated versions. It
+translates the changes that `wails.yaml` can express. Changes it cannot express
+produce a diagnostic, and the Taskfile stays in use for that behaviour.
 
-- Standalone development builds from `build` (`DEV=true`). Use `wails3 dev`.
-- Release APK output for Android. Use AAB.
-- Default Linux package formats. Set `formats` explicitly.
-- `ensure-simulator`, `logs:wide` and `logs:all`.
-- `SIGN_ROLE` and `TEAM_ID`.
-- Using `build/darwin/Info.dev.plist` for `wails3 run`.
+### Translated automatically
+
+- Root variables: `APP_NAME` sets the binary name, `BIN_DIR` sets
+  `build.output`, `PACKAGE_MANAGER` sets the frontend commands, and `VITE_PORT`
+  sets `dev.port`.
+- Custom frontend build and dev scripts, which become `frontend.build` and
+  `frontend.dev`.
+- Extra build tags, linker flags and environment variables on the build tasks,
+  which become `build.tags`, `build.ldflags` and `build.environment`, or the
+  matching per-target settings.
+- A custom macOS minimum version (`darwin.minimum_version`), an NSIS install
+  scope (`packages.nsis.install_scope`), and obfuscation (`build.obfuscated`).
+- The stock `go:mod:tidy` step, which becomes `build.tidy`.
+- Stock Linux packaging, which becomes `linux.formats: [appimage, deb, rpm, archlinux]`.
+- Custom steps that run a project script in a lifecycle phase. These become
+  generated hook scripts in `build/hooks/<phase>.sh`, referenced from `hooks`
+  in `wails.migrated.yaml`. The report lists each one as `translated-custom-hook`.
+- Projects that removed the iOS or Android platform migrate without those sections.
+
+### Blocks the migration
+
+These diagnostics mean the behaviour needs a manual change. The summary reads
+`needs manual changes`, and `wails3 migrate --activate` refuses while blockers
+remain.
+
+| Code | Cause | What to do |
+| ---- | ----- | ---------- |
+| `dynamic-build-flag` | A build flag or environment value is computed at build time through a `sh:` variable or a reference to a build variable. | Set a literal in `build.tags`, `build.ldflags` or `build.environment`, or write the value from a `before_build` hook. |
+| `modified-task` | A root `build`, `package` or `run` dispatch task was rewritten and cannot be proven equivalent. | Keep the Taskfile for that task, or move the change into a hook. |
+| `unsupported-hook-command` | A custom step cannot become a hook, for example because it uses a template variable that cannot be resolved. | Rewrite the step as a project script, then reference it from a hook. |
+| `dynamic-hook-command` | A custom step selects its command dynamically. | Rewrite it as a fixed script. |
+| `dynamic-task-reference` | A reachable task selects another task dynamically. | Keep the Taskfile, or flatten the dispatch. |
+| `taskfile-execution-policy` | Reachable dotenv, shell options or requirements are not represented in YAML. | Migrate them by hand. |
+| `duplicate-hook` | Custom steps conflict with an existing hook for the same phase. | Choose one hook, or merge the steps into one script. |
+| `hook-script-exists` | `build/hooks/<phase>.sh` already exists with different content. | Move or delete the file, then rerun `wails3 migrate`. |
+| `external-output`, `external-taskfile` | `BIN_DIR` or a reachable included Taskfile is outside the project. | Move the output or include into the project, or migrate it manually. |
+
+### Windows hosts
+
+The generated hook scripts are POSIX shell scripts (diagnostic `hook-posix-only`).
+The hook schema selects one script per phase, so a project that builds on
+Windows needs its own `.cmd`, `.bat` or `.ps1` hook for each phase that runs
+custom steps. Write that script yourself and make the hook invoke it on Windows.
+
+## Remaining gaps
+
+- `TEAM_ID` has no manifest field. Set the team through the signing identity.
+- `CROSS_IMAGE` cannot be renamed. Build or pull the image with `wails3 setup docker`.
+- `SIGN_ROLE` has no manifest field. See the variable table.
 
 ## Related pages
 
