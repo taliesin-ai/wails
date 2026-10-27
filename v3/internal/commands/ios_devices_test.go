@@ -75,13 +75,37 @@ const devicectlFixture = `{
         "identifier": "11111111-2222-3333-4444-555555555555",
         "connectionProperties": {"pairingState": "paired", "tunnelState": "connected", "transportType": "wired"},
         "deviceProperties": {"name": "Lea's iPhone", "osVersionNumber": "18.2"},
-        "hardwareProperties": {"udid": "00008110-001234560ABCDEF0", "marketingName": "iPhone 16 Pro", "productType": "iPhone17,1"}
+        "hardwareProperties": {"udid": "00008110-001234560ABCDEF0", "platform": "iOS", "reality": "physical", "marketingName": "iPhone 16 Pro", "productType": "iPhone17,1"}
       },
       {
         "identifier": "66666666-7777-8888-9999-000000000000",
         "connectionProperties": {"pairingState": "paired", "tunnelState": "disconnected"},
         "deviceProperties": {"name": "Test iPad", "osVersionNumber": "17.5"},
-        "hardwareProperties": {"udid": "00008103-000000000000002E", "productType": "iPad13,1"}
+        "hardwareProperties": {"udid": "00008103-000000000000002E", "platform": "iOS", "reality": "physical", "productType": "iPad13,1"}
+      },
+      {
+        "identifier": "aaaaaaaa-0000-0000-0000-000000000001",
+        "connectionProperties": {"pairingState": "paired", "tunnelState": "unavailable"},
+        "deviceProperties": {"name": "Gone iPhone", "osVersionNumber": "18.0"},
+        "hardwareProperties": {"udid": "00008120-0000000000000001", "platform": "iOS", "reality": "physical", "productType": "iPhone16,2"}
+      },
+      {
+        "identifier": "aaaaaaaa-0000-0000-0000-000000000002",
+        "connectionProperties": {"pairingState": "unpaired", "tunnelState": "disconnected"},
+        "deviceProperties": {"name": "Unpaired iPhone", "osVersionNumber": "18.0"},
+        "hardwareProperties": {"udid": "00008120-0000000000000002", "platform": "iOS", "reality": "physical", "productType": "iPhone16,1"}
+      },
+      {
+        "identifier": "bbbbbbbb-0000-0000-0000-000000000001",
+        "connectionProperties": {"pairingState": "paired", "tunnelState": "connected"},
+        "deviceProperties": {"name": "Lea's Mac", "osVersionNumber": "27.0"},
+        "hardwareProperties": {"udid": "MAC-UDID-0001", "platform": "macOS", "reality": "physical", "productType": "Mac16,1"}
+      },
+      {
+        "identifier": "bbbbbbbb-0000-0000-0000-000000000002",
+        "connectionProperties": {"pairingState": "paired", "tunnelState": "connected"},
+        "deviceProperties": {"name": "Lea's Watch", "osVersionNumber": "11.0"},
+        "hardwareProperties": {"udid": "WATCH-UDID-0001", "platform": "watchOS", "reality": "physical", "productType": "Watch7,1"}
       }
     ]
   }
@@ -116,21 +140,40 @@ func TestParseSimctlRuntimesKeepsAvailabilityAndDeviceTypes(t *testing.T) {
 	assert.Equal(t, "com.apple.CoreSimulator.SimDeviceType.iPhone-16-Pro", runtimes[1].DeviceTypes[1].Identifier)
 }
 
-func TestParseDevicectlDevicesReadsConnectionAndHardware(t *testing.T) {
+func TestParseDevicectlDevicesKeepsOnlyPhysicalIOSDevices(t *testing.T) {
 	devices, err := parseDevicectlDevices([]byte(devicectlFixture))
 	require.NoError(t, err)
-	require.Len(t, devices, 2)
+	// The Mac and the watch are excluded; the other four iOS entries are kept.
+	require.Len(t, devices, 4)
 	assert.Equal(t, iosPhysicalDevice{
-		Name:       "Lea's iPhone",
-		Identifier: "11111111-2222-3333-4444-555555555555",
-		UDID:       "00008110-001234560ABCDEF0",
-		Model:      "iPhone 16 Pro",
-		OSVersion:  "18.2",
-		State:      "connected",
+		Name:         "Lea's iPhone",
+		Identifier:   "11111111-2222-3333-4444-555555555555",
+		UDID:         "00008110-001234560ABCDEF0",
+		Model:        "iPhone 16 Pro",
+		OSVersion:    "18.2",
+		PairingState: "paired",
+		TunnelState:  "connected",
+		State:        "paired/connected",
 	}, devices[0])
-	// Without marketingName the product type is shown; tunnel state wins over pairing state.
-	assert.Equal(t, "disconnected", devices[1].State)
-	assert.Equal(t, "iPad13,1", devices[1].Model)
+	assert.Equal(t, "iPad13,1", devices[1].Model, "product type is shown without marketingName")
+	assert.Equal(t, "paired/disconnected", devices[1].State)
+	for _, device := range devices {
+		assert.NotContains(t, device.Name, "Mac")
+		assert.NotContains(t, device.Name, "Watch")
+	}
+}
+
+func TestIOSPhysicalDeviceUsability(t *testing.T) {
+	devices, err := parseDevicectlDevices([]byte(devicectlFixture))
+	require.NoError(t, err)
+	usable := map[string]bool{}
+	for _, device := range devices {
+		usable[device.Name] = device.usable()
+	}
+	assert.True(t, usable["Lea's iPhone"], "paired and connected")
+	assert.True(t, usable["Test iPad"], "paired but disconnected is usable: the tunnel comes up on demand")
+	assert.False(t, usable["Gone iPhone"], "unavailable tunnel")
+	assert.False(t, usable["Unpaired iPhone"], "unpaired")
 }
 
 func TestCollectIOSDevicesReportsMissingDevicectlAsNote(t *testing.T) {
@@ -165,29 +208,30 @@ func TestPrintIOSDevicesRendersAlignedTableAndNotes(t *testing.T) {
 	assert.Contains(t, output, "note: something skipped")
 }
 
-func TestChooseIOSRunDeviceAutoPicksTheOnlyConnectedDevice(t *testing.T) {
+func TestChooseIOSRunDeviceAutoPicksTheOnlyUsableDevice(t *testing.T) {
 	devices := []iosPhysicalDevice{
-		{Name: "Spare", Identifier: "spare-id", State: "disconnected"},
-		{Name: "Lea's iPhone", Identifier: "phone-id", UDID: "phone-udid", State: "connected"},
+		{Name: "Unpaired", Identifier: "unpaired-id", PairingState: "unpaired", TunnelState: "disconnected"},
+		{Name: "Gone", Identifier: "gone-id", PairingState: "paired", TunnelState: "unavailable"},
+		{Name: "Lea's iPhone", Identifier: "phone-id", UDID: "phone-udid", PairingState: "paired", TunnelState: "disconnected"},
 	}
 	device, err := chooseIOSRunDevice(devices)
 	require.NoError(t, err)
 	assert.Equal(t, "phone-id", device)
 
-	device, err = chooseIOSRunDevice([]iosPhysicalDevice{{Name: "No UUID", UDID: "udid-only", State: "connected"}})
+	device, err = chooseIOSRunDevice([]iosPhysicalDevice{{Name: "No UUID", UDID: "udid-only", PairingState: "paired", TunnelState: "connected"}})
 	require.NoError(t, err)
 	assert.Equal(t, "udid-only", device)
 }
 
 func TestChooseIOSRunDeviceRejectsZeroOrAmbiguousDevices(t *testing.T) {
-	_, err := chooseIOSRunDevice([]iosPhysicalDevice{{Name: "Spare", Identifier: "spare", State: "disconnected"}})
-	assert.ErrorContains(t, err, "no connected iOS device")
+	_, err := chooseIOSRunDevice([]iosPhysicalDevice{{Name: "Spare", Identifier: "spare", PairingState: "unpaired", TunnelState: "disconnected"}})
+	assert.ErrorContains(t, err, "no usable iOS device")
 
 	_, err = chooseIOSRunDevice([]iosPhysicalDevice{
-		{Name: "A", Identifier: "a", State: "connected"},
-		{Name: "B", Identifier: "b", State: "connected"},
+		{Name: "A", Identifier: "a", PairingState: "paired", TunnelState: "connected"},
+		{Name: "B", Identifier: "b", PairingState: "paired", TunnelState: "disconnected"},
 	})
-	assert.ErrorContains(t, err, "2 connected iOS devices found")
+	assert.ErrorContains(t, err, "2 usable iOS devices found")
 	assert.ErrorContains(t, err, "A (a)")
 	assert.ErrorContains(t, err, "B (b)")
 }
@@ -196,7 +240,7 @@ func TestConfigureRunTargetAutoSelectsPhysicalDevice(t *testing.T) {
 	original := iosPhysicalDeviceLister
 	t.Cleanup(func() { iosPhysicalDeviceLister = original })
 	iosPhysicalDeviceLister = func(context.Context) ([]iosPhysicalDevice, error) {
-		return []iosPhysicalDevice{{Name: "Lea's iPhone", Identifier: "phone-id", State: "connected"}}, nil
+		return []iosPhysicalDevice{{Name: "Lea's iPhone", Identifier: "phone-id", PairingState: "paired", TunnelState: "disconnected"}}, nil
 	}
 	if runtime.GOOS != "darwin" {
 		t.Skip("iOS device run configuration requires macOS")

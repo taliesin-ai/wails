@@ -64,7 +64,7 @@ func TestIOSLogsRejectsPhysicalDeviceWithClearMessage(t *testing.T) {
 	err := iosLogsWithOperations(context.Background(), IOSLogsOptions{Device: "phone-id", Wide: true}, iosLogsOperations{
 		identity: func(string) (iosLogsIdentity, error) { return iosLogsIdentity{}, nil },
 		listDevices: func(context.Context) ([]iosPhysicalDevice, error) {
-			return []iosPhysicalDevice{{Name: "Lea's iPhone", Identifier: "phone-id", UDID: "udid"}}, nil
+			return []iosPhysicalDevice{{Name: "Lea's iPhone", Identifier: "phone-id", UDID: "udid", PairingState: "paired", TunnelState: "disconnected"}}, nil
 		},
 		stream: func(context.Context, []string) error {
 			t.Fatal("physical devices must not be streamed through simctl")
@@ -107,4 +107,19 @@ func TestIOSLogsCancellationIsACleanExit(t *testing.T) {
 		stream:      func(context.Context, []string) error { return errors.New("signal: killed") },
 	})
 	assert.NoError(t, err)
+}
+
+func TestIOSLogsTreatsAnyListedDeviceUDIDAsPhysical(t *testing.T) {
+	// A paired but disconnected device is still physical, so its UDID must not reach simctl.
+	err := iosLogsWithOperations(context.Background(), IOSLogsOptions{Device: "00008103-000000000000002E", Wide: true}, iosLogsOperations{
+		identity: func(string) (iosLogsIdentity, error) { return iosLogsIdentity{}, nil },
+		listDevices: func(context.Context) ([]iosPhysicalDevice, error) {
+			return []iosPhysicalDevice{{Name: "Test iPad", Identifier: "66666666", UDID: "00008103-000000000000002E", PairingState: "paired", TunnelState: "disconnected"}}, nil
+		},
+		stream: func(context.Context, []string) error {
+			t.Fatal("a listed physical device UDID must not be streamed through simctl")
+			return nil
+		},
+	})
+	assert.ErrorContains(t, err, "physical iOS device 00008103-000000000000002E")
 }

@@ -32,12 +32,20 @@ type iosSimulator struct {
 // iosPhysicalDevice is one device reported by devicectl. Identifier is the
 // value accepted by `devicectl --device`; UDID is the hardware identifier.
 type iosPhysicalDevice struct {
-	Name       string `json:"name"`
-	Identifier string `json:"identifier"`
-	UDID       string `json:"udid,omitempty"`
-	Model      string `json:"model,omitempty"`
-	OSVersion  string `json:"os_version,omitempty"`
-	State      string `json:"state"`
+	Name         string `json:"name"`
+	Identifier   string `json:"identifier"`
+	UDID         string `json:"udid,omitempty"`
+	Model        string `json:"model,omitempty"`
+	OSVersion    string `json:"os_version,omitempty"`
+	PairingState string `json:"pairing_state"`
+	TunnelState  string `json:"tunnel_state"`
+	State        string `json:"state"`
+}
+
+// usable reports whether devicectl can install to the device. A paired device
+// whose tunnel is disconnected is usable: the tunnel is brought up on demand.
+func (d iosPhysicalDevice) usable() bool {
+	return d.PairingState == "paired" && d.TunnelState != "unavailable"
 }
 
 // iosRuntime is an installed simulator runtime and the device types it supports.
@@ -257,6 +265,8 @@ func parseDevicectlDevices(data []byte) ([]iosPhysicalDevice, error) {
 				} `json:"deviceProperties"`
 				HardwareProperties struct {
 					UDID          string `json:"udid"`
+					Platform      string `json:"platform"`
+					Reality       string `json:"reality"`
 					MarketingName string `json:"marketingName"`
 					ProductType   string `json:"productType"`
 				} `json:"hardwareProperties"`
@@ -268,49 +278,56 @@ func parseDevicectlDevices(data []byte) ([]iosPhysicalDevice, error) {
 	}
 	result := make([]iosPhysicalDevice, 0, len(list.Result.Devices))
 	for _, device := range list.Result.Devices {
-		state := device.ConnectionProperties.TunnelState
-		if state == "" {
-			state = device.ConnectionProperties.PairingState
+		// devicectl also lists Macs, watches and TVs; only physical iOS/iPadOS devices qualify.
+		if !strings.EqualFold(device.HardwareProperties.Platform, "iOS") {
+			continue
 		}
+		if reality := device.HardwareProperties.Reality; reality != "" && reality != "physical" {
+			continue
+		}
+		pairing := device.ConnectionProperties.PairingState
+		tunnel := device.ConnectionProperties.TunnelState
 		model := device.HardwareProperties.MarketingName
 		if model == "" {
 			model = device.HardwareProperties.ProductType
 		}
 		result = append(result, iosPhysicalDevice{
-			Name:       device.DeviceProperties.Name,
-			Identifier: device.Identifier,
-			UDID:       device.HardwareProperties.UDID,
-			Model:      model,
-			OSVersion:  device.DeviceProperties.OSVersionNumber,
-			State:      state,
+			Name:         device.DeviceProperties.Name,
+			Identifier:   device.Identifier,
+			UDID:         device.HardwareProperties.UDID,
+			Model:        model,
+			OSVersion:    device.DeviceProperties.OSVersionNumber,
+			PairingState: pairing,
+			TunnelState:  tunnel,
+			State:        pairing + "/" + tunnel,
 		})
 	}
 	return result, nil
 }
 
-// chooseIOSRunDevice picks the only connected physical device for a run that
-// did not name one. Connected means devicectl reports the tunnel as connected.
+// chooseIOSRunDevice picks the single usable physical device for a run that did
+// not name one.
 func chooseIOSRunDevice(devices []iosPhysicalDevice) (string, error) {
-	var connected []iosPhysicalDevice
+	var usable []iosPhysicalDevice
 	for _, device := range devices {
-		if device.State == "connected" {
-			connected = append(connected, device)
+		if device.usable() {
+			usable = append(usable, device)
 		}
 	}
-	switch len(connected) {
+	switch len(usable) {
 	case 0:
-		return "", fmt.Errorf("physical iOS run requires --device; no connected iOS device was found (see: wails3 ios devices)")
+		return "", fmt.Errorf("physical iOS run requires --device; no usable iOS device was found (see: wails3 ios devices)")
 	case 1:
-		if connected[0].Identifier != "" {
-			return connected[0].Identifier, nil
+		if usable[0].Identifier != "" {
+			return usable[0].Identifier, nil
 		}
-		return connected[0].UDID, nil
+		return usable[0].UDID, nil
 	}
-	names := make([]string, 0, len(connected))
-	for _, device := range connected {
+	names := make([]string, 0, len(usable))
+	for _, device := range usable {
 		names = append(names, fmt.Sprintf("%s (%s)", device.Name, device.Identifier))
 	}
-	return "", fmt.Errorf("physical iOS run requires --device; %d connected iOS devices found: %s", len(connected), strings.Join(names, ", "))
+	return "", fmt.Errorf("physical iOS run requires --device; %d usable iOS devices found: %s", len(usable), strings.Join(names, ", "))
 }
 
 // parseSimRuntimeID splits "com.apple.CoreSimulator.SimRuntime.iOS-18-2" into
