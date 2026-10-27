@@ -61,7 +61,7 @@
       "code": "darwin-dmg-default",
       "file": "build/darwin/Taskfile.yml",
       "task": "package",
-      "message": "stock package creates only the .app bundle; wails3 package also emits a DMG by default"
+      "message": "stock package creates only the .app bundle; the wails.yaml darwin package defaults also produce a DMG"
     },
     {
       "severity": "info",

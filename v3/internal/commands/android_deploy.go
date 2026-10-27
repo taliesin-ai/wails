@@ -429,6 +429,9 @@ func startAndroidAVD(ctx context.Context, name string, listDevices func(context.
 	if err != nil {
 		return androidDevice{}, err
 	}
+	if err := ensureWailsStateDirectory(root); err != nil {
+		return androidDevice{}, err
+	}
 	logDirectory := filepath.Join(root, ".wails", "android")
 	if err := os.MkdirAll(logDirectory, 0o755); err != nil {
 		return androidDevice{}, err

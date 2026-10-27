@@ -8,11 +8,18 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/wailsapp/wails/v3/internal/wake/cache"
 	"github.com/wailsapp/wails/v3/internal/wake/manifest"
 	"github.com/wailsapp/wails/v3/internal/wake/pipeline"
 )
 
 const hookContextFileEnvironment = "WAILS_HOOK_CONTEXT_FILE"
+
+// ensureWailsStateDirectory creates the project's .wails state directory with
+// its self-ignore file before any command writes state under it.
+func ensureWailsStateDirectory(root string) error {
+	return cache.EnsureStateDirectory(filepath.Join(root, ".wails"))
+}
 
 var legacyHookContextEnvironment = []string{
 	"WAILS_HOOK_CONTEXT",
@@ -90,6 +97,9 @@ func (h *manifestHandler) writeHookContext(spec pipeline.HookSpec, directory, ou
 	contextRoot, err := hookScopeOutputPath(h.root, filepath.ToSlash(filepath.Join(".wails", "hooks", "context")))
 	if err != nil {
 		return "", "", err
+	}
+	if err := cache.EnsureStateDirectory(filepath.Join(h.root, ".wails")); err != nil {
+		return "", "", fmt.Errorf("create hook context root: %w", err)
 	}
 	if err := os.MkdirAll(contextRoot, 0o700); err != nil {
 		return "", "", fmt.Errorf("create hook context root: %w", err)

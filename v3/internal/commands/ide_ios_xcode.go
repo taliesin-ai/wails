@@ -66,6 +66,9 @@ func IOSXcode(options *IOSXcodeOptions, arguments []string) error {
 		return err
 	}
 	root := loaded.Config.Root
+	if err := ensureWailsStateDirectory(root); err != nil {
+		return err
+	}
 	project := filepath.Join(root, ".wails", "ide", "ios", "xcode")
 	archive := filepath.Join(root, filepath.FromSlash(pkg.Binary))
 	result, err := materialiseIDEProject(ideMaterialiseOptions{

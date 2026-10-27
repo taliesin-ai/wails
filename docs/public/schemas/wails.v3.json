@@ -24,7 +24,7 @@
           "type": "string"
         },
         "formats": {
-          "description": "Package formats produced by `wails3 package` for this platform when no profile or --formats selects them; overrides the built-in default.",
+          "description": "Package formats produced for this platform when no profile target or --formats selects them; overrides the built-in default.",
           "items": {
             "type": "string"
           },
@@ -654,7 +654,7 @@
           "type": "string"
         },
         "formats": {
-          "description": "Package formats produced by `wails3 package` for this platform when no profile or --formats selects them; overrides the built-in default.",
+          "description": "Package formats produced for this platform when no profile target or --formats selects them; overrides the built-in default.",
           "items": {
             "type": "string"
           },
@@ -1253,7 +1253,7 @@
           "type": "array"
         },
         "formats": {
-          "description": "Package formats produced by `wails3 package` for this platform when no profile or --formats selects them; overrides the built-in default.",
+          "description": "Package formats produced for this platform when no profile target or --formats selects them; overrides the built-in default.",
           "items": {
             "type": "string"
           },

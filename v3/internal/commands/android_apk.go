@@ -13,7 +13,7 @@ import (
 // androidDebugSignWarning is reported whenever a release APK is signed with the
 // Android debug keystore. Such an APK installs, but it is not a distributable
 // build: the debug key is public and cannot be used for distribution.
-const androidDebugSignWarning = "Android release APK was signed with the debug keystore (~/.android/debug.keystore) because no release signing ran in this build. It is installable for testing but NOT suitable for distribution. Run `wails3 sign` with signing.android configured to produce a distributable APK."
+const androidDebugSignWarning = "Android release APK was signed with the debug keystore (~/.android/debug.keystore) because no release signing ran in this build. It is installable for testing but NOT suitable for distribution. Configure signing.android (certificate, key_alias, credential) in wails.yaml and rebuild to produce a distributable APK."
 
 // needsAndroidDebugSign reports whether a packaged artifact must be signed with
 // the debug keystore. Unsigned release APKs cannot be installed, so this is the

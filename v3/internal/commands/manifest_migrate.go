@@ -814,7 +814,7 @@ func analyseMigrationWithScripts(root string) (MigrationReport, manifest.Documen
 			report.Diagnostics = append(report.Diagnostics, MigrationDiagnostic{Severity: "info", Code: "translated-package-formats", File: rel, Task: "package", Message: "stock package builds appimage, deb, rpm and archlinux; translated to linux.formats"})
 		}
 		if role == "darwin" && reachability.contains(path, "package") && stockTask("package") {
-			report.Diagnostics = append(report.Diagnostics, MigrationDiagnostic{Severity: "info", Code: "darwin-dmg-default", File: rel, Task: "package", Message: "stock package creates only the .app bundle; wails3 package also emits a DMG by default"})
+			report.Diagnostics = append(report.Diagnostics, MigrationDiagnostic{Severity: "info", Code: "darwin-dmg-default", File: rel, Task: "package", Message: "stock package creates only the .app bundle; the wails.yaml darwin package defaults also produce a DMG"})
 		}
 		sort.Strings(classification.ModifiedTasks)
 		sort.Strings(classification.MissingTasks)
@@ -1352,7 +1352,7 @@ var knownStockTaskfiles = map[string]map[string]bool{
 // auxiliary task, which has no automatic YAML equivalent. Build-path tasks such
 // as platform build:docker are not listed: they are migrated, not replaced.
 func stockTaskReplacement(role, name string) (string, bool) {
-	const signing = "is replaced by configuring signing in wails.yaml (`wails3 setup signing`) and running `wails3 sign`"
+	const signing = "is replaced by configuring signing in wails.yaml (`wails3 setup signing`) and a profile target with `sign: true` (plus `notarize: true` for macOS notarization) built with `wails3 build <profile>`"
 	switch role {
 	case "root", "common":
 		switch name {

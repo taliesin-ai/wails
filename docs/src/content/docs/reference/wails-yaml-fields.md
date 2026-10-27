@@ -14,7 +14,7 @@ Fields are listed using schema paths. Named maps use placeholders such as `targe
 | `android.comments` | string | no |  | `"value"` | ios,android | Additional package metadata comments. |
 | `android.company` | string | no |  | `"value"` | ios,android | Company or organisation name. |
 | `android.display_name` | string | no |  | `"Example App"` | ios,android | Name displayed by the mobile platform. |
-| `android.formats` | list(string) | no |  | `["aab"]` | windows,linux,android | Package formats produced by `wails3 package` for this platform when no profile or --formats selects them; overrides the built-in default. |
+| `android.formats` | list(string) | no |  | `["aab"]` | windows,linux,android | Package formats produced for this platform when no profile target or --formats selects them; overrides the built-in default. |
 | `android.icon` | string | no |  | `"assets/appicon.png"` | windows,darwin,linux,ios,android | Project-relative user-owned icon file. |
 | `android.manifest` | string | no |  | `"assets/manifest.xml"` | windows,android | Project-relative user-owned platform or package manifest. |
 | `android.minimum_sdk` | integer | no |  | `24` | android | Minimum supported Android SDK level. |
@@ -128,7 +128,7 @@ Fields are listed using schema paths. Named maps use placeholders such as `targe
 | `linux.build_number` | integer | no |  | `1` | windows,darwin,linux,ios | Platform build number. |
 | `linux.capabilities` | list(string) | no |  | `["internetClient"]` | windows,darwin,linux,ios | Native platform capabilities requested by the application. |
 | `linux.desktop_entry` | string | no |  | `"assets/app.desktop"` | linux | User-owned Linux desktop-entry file. |
-| `linux.formats` | list(string) | no |  | `["appimage", "deb"]` | windows,linux,android | Package formats produced by `wails3 package` for this platform when no profile or --formats selects them; overrides the built-in default. |
+| `linux.formats` | list(string) | no |  | `["appimage", "deb"]` | windows,linux,android | Package formats produced for this platform when no profile target or --formats selects them; overrides the built-in default. |
 | `linux.icon` | string | no |  | `"assets/appicon.png"` | windows,darwin,linux,ios,android | Project-relative user-owned icon file. |
 | `linux.identifier` | string | no |  | `"com.example.app"` | windows,darwin,linux | Reverse-domain application identifier. |
 | `linux.minimum_version` | string | no |  | `"12.0"` | windows,darwin,linux,ios | Minimum supported operating-system version. |
@@ -210,7 +210,7 @@ Fields are listed using schema paths. Named maps use placeholders such as `targe
 | `windows` | object | no |  | `{}` |  | Windows platform settings. |
 | `windows.build_number` | integer | no |  | `1` | windows,darwin,linux,ios | Platform build number. |
 | `windows.capabilities` | list(string) | no |  | `["internetClient"]` | windows,darwin,linux,ios | Native platform capabilities requested by the application. |
-| `windows.formats` | list(string) | no |  | `["nsis"]` | windows,linux,android | Package formats produced by `wails3 package` for this platform when no profile or --formats selects them; overrides the built-in default. |
+| `windows.formats` | list(string) | no |  | `["nsis"]` | windows,linux,android | Package formats produced for this platform when no profile target or --formats selects them; overrides the built-in default. |
 | `windows.icon` | string | no |  | `"assets/appicon.png"` | windows,darwin,linux,ios,android | Project-relative user-owned icon file. |
 | `windows.identifier` | string | no |  | `"com.example.app"` | windows,darwin,linux | Reverse-domain application identifier. |
 | `windows.manifest` | string | no |  | `"assets/manifest.xml"` | windows,android | Project-relative user-owned platform or package manifest. |

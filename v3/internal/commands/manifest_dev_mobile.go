@@ -152,6 +152,9 @@ func configureMobileDev(ctx context.Context, options *DevOptions, output *dev.Ou
 		}
 	}
 	launch := func(root, artifact, url string, port int, args []string) (dev.Process, error) {
+		if e := ensureWailsStateDirectory(root); e != nil {
+			return nil, e
+		}
 		stage, e := os.MkdirTemp(filepath.Join(root, ".wails", "dev"), "launch-")
 		if e != nil {
 			return nil, e

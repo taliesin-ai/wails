@@ -132,7 +132,35 @@ func OpenCache(root string) (*Cache, error) {
 		mkdirAll:     os.MkdirAll,
 		userCacheDir: os.UserCacheDir,
 		readFile:     os.ReadFile,
+		ensureIgnore: ensureStateIgnore,
 	})
+}
+
+// EnsureStateDirectory creates a .wails state directory and makes it ignore
+// itself, so generated state never dirties the user's repository.
+func EnsureStateDirectory(stateDir string) error {
+	if err := os.MkdirAll(stateDir, 0o755); err != nil {
+		return fmt.Errorf("wake: create state directory: %w", err)
+	}
+	return ensureStateIgnore(stateDir)
+}
+
+// ensureStateIgnore writes stateDir/.gitignore containing "*" when it is
+// missing. An existing file is never touched, so a user's own rules survive.
+func ensureStateIgnore(stateDir string) error {
+	file, err := os.OpenFile(filepath.Join(stateDir, ".gitignore"), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if errors.Is(err, fs.ErrExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("wake: create state ignore file: %w", err)
+	}
+	_, writeErr := file.WriteString("*\n")
+	closeErr := file.Close()
+	if writeErr != nil || closeErr != nil {
+		return fmt.Errorf("wake: write state ignore file: %w", errors.Join(writeErr, closeErr))
+	}
+	return nil
 }
 
 // OpenCacheReadOnly opens existing cache metadata without creating project
@@ -151,6 +179,9 @@ type cacheOpenOperations struct {
 	mkdirAll     func(string, fs.FileMode) error
 	userCacheDir func() (string, error)
 	readFile     func(string) ([]byte, error)
+	// ensureIgnore writes the state directory's self-ignore file. Nil for
+	// read-only opens, which must not create project state.
+	ensureIgnore func(string) error
 }
 
 func openCacheWithOperations(root string, operations cacheOpenOperations) (*Cache, error) {
@@ -161,6 +192,11 @@ func openCacheWithOperations(root string, operations cacheOpenOperations) (*Cach
 	stateDir := filepath.Join(absRoot, ".wails")
 	if err := operations.mkdirAll(stateDir, 0o755); err != nil {
 		return nil, fmt.Errorf("wake: create state directory: %w", err)
+	}
+	if operations.ensureIgnore != nil {
+		if err := operations.ensureIgnore(stateDir); err != nil {
+			return nil, err
+		}
 	}
 	userCache, err := operations.userCacheDir()
 	if err != nil {
