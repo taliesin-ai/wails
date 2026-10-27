@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -487,4 +488,30 @@ func TestDarwinAdhocSignedBundleHasSealedResources(t *testing.T) {
 	assert.Contains(t, string(output), "Signature=adhoc")
 	assert.Contains(t, string(output), "Identifier=com.example.app")
 	assert.Contains(t, string(output), "Sealed Resources")
+}
+
+func TestDarwinAppPublishesWithReadableDirectories(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX directory modes are not meaningful on windows")
+	}
+	root := t.TempDir()
+	assets := filepath.Join(root, ".wails", "assets", "darwin")
+	require.NoError(t, os.MkdirAll(assets, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(assets, "Info.plist"), []byte(testDarwinInfoPlist), 0o644))
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "bin"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "bin", "example"), []byte("binary"), 0o755))
+	spec := packageTestSpec("darwin", "arm64", "app")
+	spec.Binary = "bin/example"
+	spec.Assets = ".wails/assets"
+	spec.Output = "dist/Example.app"
+	_, err := (&manifestHandler{root: root}).packageApp(context.Background(), spec)
+	require.NoError(t, err)
+	for _, dir := range []string{"dist/Example.app", "dist/Example.app/Contents", "dist/Example.app/Contents/MacOS"} {
+		info, err := os.Stat(filepath.Join(root, dir))
+		require.NoError(t, err)
+		assert.Equal(t, fs.FileMode(0o755), info.Mode().Perm(), dir)
+	}
+	info, err := os.Stat(filepath.Join(root, "dist", "Example.app", "Contents", "MacOS", "example"))
+	require.NoError(t, err)
+	assert.Equal(t, fs.FileMode(0o755), info.Mode().Perm()&0o755, "executable keeps its mode")
 }

@@ -1593,11 +1593,39 @@ func manifestSigningPlatform(signing manifest.Signing, targetOS string) *manifes
 }
 
 func replacePathTransactional(staged, destination string) error {
+	// Staging roots come from os.MkdirTemp, which creates them 0700. Published
+	// bundles and output directories must be readable by other users, so
+	// normalise every staged directory to 0755 before it becomes visible.
+	if err := normalizeStagedDirectories(staged); err != nil {
+		return err
+	}
 	return replacePathTransactionalWithOperations(staged, destination, replacePathOperations{
 		mkdirTemp: os.MkdirTemp,
 		lstat:     os.Lstat,
 		rename:    os.Rename,
 		removeAll: os.RemoveAll,
+	})
+}
+
+// normalizeStagedDirectories sets every directory under root (including root)
+// to 0755. File modes are left exactly as produced, so executables keep their
+// permissions. Symbolic links are not followed.
+func normalizeStagedDirectories(root string) error {
+	return filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !entry.IsDir() {
+			return nil
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if info.Mode().Perm() == 0o755 {
+			return nil
+		}
+		return os.Chmod(path, 0o755)
 	})
 }
 
@@ -2175,7 +2203,7 @@ func (h *manifestHandler) packageApp(ctx context.Context, s pipeline.PackageSpec
 	}
 	if s.AdhocSign {
 		if manifestHostOS != "darwin" {
-			fmt.Fprintf(os.Stdout, "Skipping ad-hoc codesign (not available on %s); sign the .app on macOS before distribution\n", manifestHostOS)
+			fmt.Fprintf(os.Stderr, "Skipping ad-hoc codesign (not available on %s); sign the .app on macOS before distribution\n", manifestHostOS)
 		} else if _, err := runManifestCommand(ctx, h.root, nil, "codesign", "--force", "--deep", "--sign", "-", staged); err != nil {
 			return pipeline.RunResult{}, fmt.Errorf("ad-hoc codesign %s: %w", s.Project.BinaryName+".app", err)
 		}
