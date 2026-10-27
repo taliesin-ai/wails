@@ -151,6 +151,33 @@ offline transitions. Emulators remain running by default for quick iteration.
 target when the attached session ends. If Wails starts a new emulator but boot
 readiness fails or is cancelled, it cleans up that process automatically.
 
+## Open native projects in an IDE
+
+The Taskfile `ios:xcode` and `android:studio` tasks have wake equivalents. Both
+build the target first, so the native project matches the current code, then
+keep a persistent copy under `.wails/ide/`:
+
+```bash
+wails3 ios xcode                      # build for the simulator, open Xcode
+wails3 ios xcode -no-open             # refresh the project and print its path
+wails3 android studio                 # build the debug APK inputs, open Android Studio
+wails3 android studio -no-open
+```
+
+- `ios xcode` writes `.wails/ide/ios/xcode/main.xcodeproj`. The Go c-archive
+  is linked from `lib/` inside that project, so Xcode does not rebuild Go on
+  each build. Run the command again after changing Go code.
+- `android studio` writes the Gradle project to `.wails/ide/android/`, with the
+  native library in `app/src/main/jniLibs/`. Android Studio is opened with
+  `studio` on the PATH, `open -a "Android Studio"` on macOS, or `studio.sh` on
+  Linux. Without one of these, the command prints the path.
+- Both accept an optional profile name, as `wails3 android run` does.
+- Refreshing is safe to repeat. If you edited the project since the last
+  refresh, your version moves to `<project>.bak` (or `.bak.1`, `.bak.2`, ...)
+  and a warning names it. IDE state such as `xcuserdata/`, `.idea/` and
+  `local.properties` is kept across refreshes.
+- `ios xcode` only runs on macOS. Full Xcode is required to build the project.
+
 ## Run bounded lifecycle hooks
 
 The experimental hook surface invokes one project-owned script at each declared

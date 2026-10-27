@@ -231,6 +231,12 @@ func main() {
 	ios := app.NewSubCommand("ios", "iOS tooling")
 	ios.NewSubCommandFunction("overlay:gen", "Generate Go overlay for iOS bridge shim", commands.IOSOverlayGen)
 	ios.NewSubCommandFunction("xcode:gen", "Generate Xcode project in output directory", commands.IOSXcodeGen)
+	if features.WakeEnabled() {
+		iosXcode := ios.NewSubCommand("xcode", "Build and open a persistent Xcode project in .wails/ide/ios/xcode")
+		var iosXcodeOptions commands.IOSXcodeOptions
+		iosXcode.AddFlags(&iosXcodeOptions)
+		iosXcode.Action(func() error { return commands.IOSXcode(&iosXcodeOptions, iosXcode.OtherArgs()) })
+	}
 
 	// Android tools
 	android := app.NewSubCommand("android", "Android tooling")
@@ -241,6 +247,10 @@ func main() {
 		var androidRunOptions commands.AndroidRunOptions
 		androidRun.AddFlags(&androidRunOptions)
 		androidRun.Action(func() error { return commands.AndroidRun(&androidRunOptions, androidRun.OtherArgs()) })
+		androidStudio := android.NewSubCommand("studio", "Build and open a persistent Gradle project in .wails/ide/android")
+		var androidStudioOptions commands.AndroidStudioOptions
+		androidStudio.AddFlags(&androidStudioOptions)
+		androidStudio.Action(func() error { return commands.AndroidStudio(&androidStudioOptions, androidStudio.OtherArgs()) })
 	}
 
 	app.NewSubCommandFunction("version", "Print the version", commands.Version)
