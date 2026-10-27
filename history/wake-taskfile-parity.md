@@ -84,7 +84,25 @@ has one script per phase); Windows hosts get an info diagnostic.
   Categories=Development), windows cross, server, `build --dev`, run/dev plans.
 - Windows (win-node1, amd64, native): migrate, activate, build, cached, PE
   subsystem GUI, `build --dev`, arm64, server exe, run/dev plans.
+- NSIS: installer built and verified on macOS (makensis 3.13, C locale);
+  not run on a Windows host (makensis absent on win-node1).
 - Not verifiable here: iOS on-device/simulator flows (no Xcode.app on any
-  reachable Mac), Authenticode/notarization signing (no identities), MSIX
-  (needs Windows SDK tools), Linux live GUI dev session (container has no
-  display).
+  reachable Mac), Authenticode/notarization/dpkg-sig/rpmsign signing (no
+  identities), MSIX (needs Windows SDK tools), Linux live GUI dev session
+  (container has no display). These are unit-tested and code-reviewed only.
+- Review: CodeRabbit on v3/internal/commands (94 files, 3 minor) and
+  v3/internal/wake (1 minor); all 4 findings fixed with regression tests.
+- `go build ./...` fails on examples/file-association (unbuilt embed) and
+  internal/commands/build_assets/ios (package main without main); both fail
+  identically at the base commit bb687a997.
+
+## Known caveats
+
+- Signing identity: wake reads signing settings from `wails.yaml` only and
+  does not consult `~/.config/wails/defaults.yaml` at plan time. A legacy
+  project that relied on `wails3 setup signing` defaults must re-run it in
+  wake mode (it writes into `wails.yaml`).
+- Generated migration hook scripts are POSIX shell; Windows hosts need a
+  `.cmd`/`.ps1` equivalent (info diagnostic `hook-posix-only`).
+- The branch is based on bb687a997 (PR 6131), which is not on master; it
+  needs a rebase onto current master before it can merge.
