@@ -1,0 +1,4 @@
+{"edits": [
+ {"file": "build/darwin/Taskfile.yml", "old": "-mmacosx-version-min=12.0", "new": "-mmacosx-version-min=13.0", "all": true},
+ {"file": "build/darwin/Taskfile.yml", "old": "MACOSX_DEPLOYMENT_TARGET: \"12.0\"", "new": "MACOSX_DEPLOYMENT_TARGET: \"13.0\""}
+]}

@@ -1,0 +1,7 @@
+{"edits": [
+ {"file": "Taskfile.yml", "pattern": "APP_NAME: \"[^\"]*\"", "new": "APP_NAME: \"MyApp\""},
+ {"file": "build/Taskfile.yml", "old": "  generate:icons:\n", "new": "  generate:version:\n    summary: Writes the app name\n    cmds:\n      - echo {{.APP_NAME}} > app.txt\n\n  generate:icons:\n"},
+ {"file": "build/darwin/Taskfile.yml", "old": "    summary: Builds the application natively on macOS\n    internal: true\n    deps:\n", "new": "    summary: Builds the application natively on macOS\n    internal: true\n    deps:\n      - task: common:generate:version\n"},
+ {"file": "build/windows/Taskfile.yml", "old": "    summary: Builds the application using native Go cross-compilation\n    internal: true\n    deps:\n", "new": "    summary: Builds the application using native Go cross-compilation\n    internal: true\n    deps:\n      - task: common:generate:version\n"},
+ {"file": "build/linux/Taskfile.yml", "old": "    summary: Builds the application natively on Linux\n    internal: true\n    deps:\n", "new": "    summary: Builds the application natively on Linux\n    internal: true\n    deps:\n      - task: common:generate:version\n"}
+]}

@@ -1,0 +1,6 @@
+{"edits": [
+ {"file": "Taskfile.yml", "pattern": "APP_NAME: \"[^\"]*\"", "new": "APP_NAME: \"MyApp\""},
+ {"file": "Taskfile.yml", "pattern": "BIN_DIR: \"[^\"]*\"", "new": "BIN_DIR: \"dist\""},
+ {"file": "Taskfile.yml", "pattern": "VITE_PORT: '[^\\n]*'", "new": "VITE_PORT: '9333'"},
+ {"file": "Taskfile.yml", "pattern": "PACKAGE_MANAGER: '[^\\n]*'", "new": "PACKAGE_MANAGER: pnpm"}
+]}

@@ -1,0 +1,4 @@
+{"edits": [
+ {"file": "build/Taskfile.yml", "old": "{{else}}build{{end}}'", "new": "{{else}}build:prod{{end}}'"},
+ {"file": "build/Taskfile.yml", "old": "npm run dev -- --port {{.VITE_PORT}} --strictPort", "new": "npm run dev:hmr -- --port {{.VITE_PORT}} --strictPort"}
+]}

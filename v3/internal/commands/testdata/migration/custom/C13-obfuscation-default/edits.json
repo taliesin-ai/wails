@@ -1,0 +1,3 @@
+{"edits": [
+ {"file": "Taskfile.yml", "pattern": "(?m)^vars:\\n", "new": "vars:\n  OBFUSCATED: \"true\"\n  GARBLE_ARGS: \"-literals\"\n"}
+]}

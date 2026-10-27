@@ -1,0 +1,3 @@
+{"edits": [
+ {"file": "build/darwin/Taskfile.yml", "old": "CGO_LDFLAGS: \"-mmacosx-version-min=12.0\"", "new": "CGO_LDFLAGS: \"-L/opt/lib\""}
+]}

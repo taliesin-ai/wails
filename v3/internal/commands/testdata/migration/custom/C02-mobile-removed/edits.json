@@ -1,0 +1,4 @@
+{"edits": [
+ {"file": "Taskfile.yml", "old": "  ios: ./build/ios/Taskfile.yml\n", "new": ""},
+ {"file": "Taskfile.yml", "old": "  android: ./build/android/Taskfile.yml\n", "new": ""}
+], "remove": ["build/ios", "build/android"]}

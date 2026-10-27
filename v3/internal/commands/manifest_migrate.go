@@ -50,6 +50,9 @@ type migrationCommandOperations struct {
 	loadDraft            func(string, string, string) (*manifest.Loaded, error)
 	publishDraft         func(string, string) error
 	version              func() string
+	// generatedScripts returns the hook scripts the draft depends on. Nil means
+	// the operation writes no scripts.
+	generatedScripts func(string) ([]generatedHookScript, error)
 }
 
 func productionMigrationCommandOperations() migrationCommandOperations {
@@ -64,6 +67,10 @@ func productionMigrationCommandOperations() migrationCommandOperations {
 			return activateMigrationDraft(draft, active, migrationActivationOperations{link: os.Link, remove: os.Remove})
 		},
 		version: version.String,
+		generatedScripts: func(root string) ([]generatedHookScript, error) {
+			_, _, scripts, err := analyseMigrationWithScripts(root)
+			return scripts, err
+		},
 	}
 }
 
@@ -103,6 +110,19 @@ func migrateWithOperations(options *MigrateOptions, operations migrationCommandO
 		}
 		report.Wrote = append(report.Wrote, relativeDraft)
 	}
+	var written, pending []string
+	if operations.generatedScripts != nil {
+		scripts, scriptsErr := operations.generatedScripts(root)
+		if scriptsErr != nil {
+			return scriptsErr
+		}
+		var writeErr error
+		written, pending, writeErr = writeGeneratedHookScripts(root, scripts, options.DryRun)
+		if writeErr != nil {
+			return writeErr
+		}
+		report.Wrote = append(report.Wrote, written...)
+	}
 	if options.JSON {
 		data, _ := json.MarshalIndent(report, "", "  ")
 		fmt.Println(string(data))
@@ -131,6 +151,12 @@ func migrateWithOperations(options *MigrateOptions, operations migrationCommandO
 		fmt.Printf("Left existing inactive %s unchanged; analysis only\n", relativeDraft)
 	} else {
 		fmt.Printf("Wrote inactive %s\n", relativeDraft)
+	}
+	for _, path := range written {
+		fmt.Printf("Wrote %s\n", path)
+	}
+	for _, path := range pending {
+		fmt.Printf("Would write %s\n", path)
 	}
 	if len(replacements) > 0 {
 		fmt.Println("Taskfile tasks replaced by wails3 commands:")
@@ -264,6 +290,9 @@ type migrationTaskNode struct {
 type migrationReachability struct {
 	reachable map[string]map[string]bool
 	issues    []MigrationDiagnostic
+	// nodes indexes every loaded task by its namespaced key, so hook planning
+	// can resolve task references across Taskfiles.
+	nodes map[string][]migrationTaskNode
 }
 
 func (r migrationReachability) contains(path, task string) bool {
@@ -346,7 +375,7 @@ func analyseTaskReachability(rootTask string, files []string) (migrationReachabi
 		}
 	}
 
-	result := migrationReachability{reachable: map[string]map[string]bool{}, issues: includeIssues}
+	result := migrationReachability{reachable: map[string]map[string]bool{}, issues: includeIssues, nodes: nodes}
 	queue := make([]string, 0, 30)
 	for _, root := range []string{"build", "package", "sign", "dev", "run"} {
 		if len(nodes[root]) > 0 {
@@ -358,6 +387,11 @@ func analyseTaskReachability(rootTask string, files []string) (migrationReachabi
 				queue = append(queue, candidate)
 			}
 		}
+	}
+	// Live development reaches the frontend dev task through the legacy dev
+	// command, so it is a root even though no build task depends on it.
+	if len(nodes["common:dev:frontend"]) > 0 {
+		queue = append(queue, "common:dev:frontend")
 	}
 	seen := map[string]bool{}
 	issueSeen := map[string]bool{}
@@ -383,7 +417,7 @@ func analyseTaskReachability(rootTask string, files []string) (migrationReachabi
 			result.reachable[node.path][node.name] = true
 			for _, reference := range migrationTaskReferences(node.task) {
 				if strings.Contains(reference, "{{") {
-					if node.prefix == "" && recognizedRootTask(node.name, node.task) {
+					if node.prefix == "" && (recognizedRootTask(node.name, node.task) || rootDispatchWithExtras(node.name, node.task)) {
 						suffix := ":" + node.name
 						for candidate := range nodes {
 							if strings.HasSuffix(candidate, suffix) {
@@ -487,8 +521,14 @@ func knownStockTaskfile(path, role string) bool {
 // matchesStockTask reports whether task is identical to the same-named task in
 // one of the stock variants for role.
 func matchesStockTask(role, name string, task *wakeast.Task) bool {
+	if task == nil {
+		return false
+	}
+	// A recognised default change (INSTALL_SCOPE, frontend SCRIPT) keeps the
+	// stock dispatch, so the task still counts as stock for reachability.
+	normalised := normaliseRecognisedDefaults(task)
 	for _, variant := range stockTaskVariants(role) {
-		if expected, ok := variant[name]; ok && reflect.DeepEqual(task, expected) {
+		if expected, ok := variant[name]; ok && (reflect.DeepEqual(task, expected) || reflect.DeepEqual(normalised, expected)) {
 			return true
 		}
 	}
@@ -559,22 +599,29 @@ func migrationTaskReferences(task *wakeast.Task) []string {
 }
 
 func analyseMigration(root string) (MigrationReport, manifest.Document, error) {
+	report, doc, _, err := analyseMigrationWithScripts(root)
+	return report, doc, err
+}
+
+// analyseMigrationWithScripts also returns the hook scripts the draft depends
+// on. They are new files, written next to the draft, never edits to legacy files.
+func analyseMigrationWithScripts(root string) (MigrationReport, manifest.Document, []generatedHookScript, error) {
 	report := MigrationReport{Version: 1, CompletedBy: version.String(), Complete: true, Sources: map[string]string{}}
 	root, err := filepath.Abs(root)
 	if err != nil {
-		return report, manifest.Document{}, err
+		return report, manifest.Document{}, nil, err
 	}
 	rootTask, err := findTaskfile(root)
 	if err != nil {
-		return report, manifest.Document{}, err
+		return report, manifest.Document{}, nil, err
 	}
 	files, err := discoverTaskfiles(rootTask)
 	if err != nil {
-		return report, manifest.Document{}, err
+		return report, manifest.Document{}, nil, err
 	}
 	reachability, err := analyseTaskReachability(rootTask, files)
 	if err != nil {
-		return report, manifest.Document{}, err
+		return report, manifest.Document{}, nil, err
 	}
 	for _, diagnostic := range reachability.issues {
 		if relative, relErr := filepath.Rel(root, diagnostic.File); relErr == nil {
@@ -583,6 +630,8 @@ func analyseMigration(root string) (MigrationReport, manifest.Document, error) {
 		report.Complete = false
 		report.Diagnostics = append(report.Diagnostics, diagnostic)
 	}
+	customs := newCustomBuildAdjustments()
+	customs.planHooks(reachability, rootTask)
 	packageManager := ""
 	binaryName := ""
 	buildOutput := ""
@@ -592,6 +641,8 @@ func analyseMigration(root string) (MigrationReport, manifest.Document, error) {
 	bindingTimeType := ""
 	bindingsCommandSeen := false
 	buildTidy := false
+	obfuscated := false
+	var garbleArgs []string
 	linuxFormats := false
 	// Replacement actions are collected per distinct action text so each one
 	// is reported once per project, naming every stock task it covers.
@@ -601,7 +652,7 @@ func analyseMigration(root string) (MigrationReport, manifest.Document, error) {
 	for _, path := range files {
 		rel, err := filepath.Rel(root, path)
 		if err != nil {
-			return report, manifest.Document{}, err
+			return report, manifest.Document{}, nil, err
 		}
 		rel = filepath.ToSlash(rel)
 		if rel == ".." || strings.HasPrefix(rel, "../") {
@@ -615,12 +666,12 @@ func analyseMigration(root string) (MigrationReport, manifest.Document, error) {
 		}
 		digest, err := digestFile(path)
 		if err != nil {
-			return report, manifest.Document{}, err
+			return report, manifest.Document{}, nil, err
 		}
 		report.Sources[rel] = digest
 		tf, err := parse.Parse(path)
 		if err != nil {
-			return report, manifest.Document{}, err
+			return report, manifest.Document{}, nil, err
 		}
 		if len(reachability.reachable[filepath.Clean(path)]) > 0 && (len(tf.Env) > 0 || len(tf.Dotenv) > 0 || len(tf.Shopt) > 0 || tf.Requires != nil) {
 			report.Complete = false
@@ -632,7 +683,7 @@ func analyseMigration(root string) (MigrationReport, manifest.Document, error) {
 		if !knownStock && len(knownStockTaskfiles[role]) > 0 {
 			data, err := os.ReadFile(path)
 			if err != nil {
-				return report, manifest.Document{}, err
+				return report, manifest.Document{}, nil, err
 			}
 			// Git commonly checks out generated Taskfiles as CRLF on Windows.
 			// YAML normalises these line breaks; keep the source receipt's raw
@@ -679,6 +730,11 @@ func analyseMigration(root string) (MigrationReport, manifest.Document, error) {
 			}
 			bindingsCommandSeen = bindingsCommandSeen || legacyGeneratesBindings(tf.Tasks[name])
 			reachable := reachability.contains(path, name)
+			if customs.isConsumed(path, name) {
+				classification.Classification = "customised"
+				classification.ModifiedTasks = appendUnique(classification.ModifiedTasks, name)
+				continue
+			}
 			if phase, script, ok := legacyLifecycleScript(root, filepath.Dir(path), name, tf.Tasks[name]); ok {
 				severity := "info"
 				code := "unrelated-task"
@@ -718,11 +774,16 @@ func analyseMigration(root string) (MigrationReport, manifest.Document, error) {
 				classification.ModifiedTasks = appendUnique(classification.ModifiedTasks, name)
 				continue
 			}
-			if reachable && (containsString(canonical.changed, name) || containsString(canonical.added, name)) {
-				report.Complete = false
-				report.Diagnostics = append(report.Diagnostics, MigrationDiagnostic{Severity: "warning", Code: "modified-task", File: rel, Task: name, Message: "generated task was modified and is not proven representable in config-only YAML; keep using Taskfiles"})
+			if reachable && !customs.isConsumed(path, name) && (containsString(canonical.changed, name) || containsString(canonical.added, name)) {
+				outcome := customs.translate(path, role, name, tf.Tasks[name], stockTaskNamed(role, name))
+				if outcome.translated {
+					report.Diagnostics = append(report.Diagnostics, MigrationDiagnostic{Severity: "info", Code: "translated-custom-task", File: rel, Task: name, Message: customTaskNote(outcome)})
+				} else {
+					report.Complete = false
+					report.Diagnostics = append(report.Diagnostics, MigrationDiagnostic{Severity: "warning", Code: outcome.code, File: rel, Task: name, Message: "generated task was modified and is not proven representable in config-only YAML: " + outcome.message + "; keep using Taskfiles"})
+				}
 			}
-			if reachable && role == "root" && !recognizedRootTask(name, tf.Tasks[name]) {
+			if reachable && role == "root" && !recognizedRootTask(name, tf.Tasks[name]) && !customs.isConsumed(path, name) {
 				report.Complete = false
 				report.Diagnostics = append(report.Diagnostics, MigrationDiagnostic{Severity: "warning", Code: "modified-task", File: rel, Task: name, Message: "root dispatch task was modified and is not proven representable in config-only YAML; keep using Taskfiles"})
 				classification.Classification = "customised"
@@ -776,6 +837,12 @@ func analyseMigration(root string) (MigrationReport, manifest.Document, error) {
 						buildOutput = candidate
 					}
 				}
+				if key == "OBFUSCATED" && value.Static != "" && !strings.Contains(value.Static, "{{") {
+					obfuscated = value.Static == "true"
+				}
+				if key == "GARBLE_ARGS" && value.Static != "" && !strings.Contains(value.Static, "{{") {
+					garbleArgs = strings.Fields(value.Static)
+				}
 				if key == "VITE_PORT" && value.Static != "" && !strings.Contains(value.Static, "{{") {
 					port, convErr := strconv.Atoi(strings.TrimSpace(value.Static))
 					if convErr != nil || port < 1 || port > 65535 {
@@ -808,6 +875,8 @@ func analyseMigration(root string) (MigrationReport, manifest.Document, error) {
 	}
 	doc := manifest.NewDocument(project)
 	doc.Build.Tidy = buildTidy
+	doc.Build.Obfuscation = obfuscated
+	doc.Build.Go.GarbleArgs = garbleArgs
 	if linuxFormats {
 		doc.Package.Linux.Formats = []string{"appimage", "deb", "rpm", "archlinux"}
 	}
@@ -824,10 +893,10 @@ func analyseMigration(root string) (MigrationReport, manifest.Document, error) {
 		doc.Frontend.Bindings.TimeType = bindingTimeType
 	}
 	if err := applyLegacyBuildConfiguration(root, &report, &doc); err != nil {
-		return report, manifest.Document{}, err
+		return report, manifest.Document{}, nil, err
 	}
 	if err := applyLegacyFrontendConfiguration(root, packageManager, &report, &doc); err != nil {
-		return report, manifest.Document{}, err
+		return report, manifest.Document{}, nil, err
 	}
 	if bindingsCommandSeen {
 		// A tsconfig.json does not prove TypeScript bindings; the legacy
@@ -835,9 +904,10 @@ func analyseMigration(root string) (MigrationReport, manifest.Document, error) {
 		doc.Frontend.Bindings.TypeScript = typescriptBindings
 	}
 	if err := applyConventionalLegacyAssets(root, &report, &doc); err != nil {
-		return report, manifest.Document{}, err
+		return report, manifest.Document{}, nil, err
 	}
-	return report, doc, nil
+	customs.apply(&doc, &report, root)
+	return report, doc, customs.scripts(), nil
 }
 
 func legacyBindingOptions(task *wakeast.Task) (typescript, interfaces bool) {

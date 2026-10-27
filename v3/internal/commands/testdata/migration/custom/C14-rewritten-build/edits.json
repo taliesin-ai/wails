@@ -1,0 +1,3 @@
+{"edits": [
+ {"file": "build/darwin/Taskfile.yml", "old": "      - '{{if eq .OBFUSCATED \"true\"}}garble {{.GARBLE_ARGS}} build{{else}}go build{{end}} {{.BUILD_FLAGS}} -o \"{{.OUTPUT}}\"'", "new": "      - make build OUTPUT=\"{{.OUTPUT}}\""}
+]}

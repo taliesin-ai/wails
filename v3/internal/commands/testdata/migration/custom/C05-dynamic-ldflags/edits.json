@@ -1,0 +1,4 @@
+{"edits": [
+ {"file": "Taskfile.yml", "pattern": "(?m)^vars:\\n", "new": "vars:\n  VERSION:\n    sh: git describe --tags\n"},
+ {"file": "build/darwin/Taskfile.yml", "old": "-ldflags=\"-w -s\"", "new": "-ldflags=\"-w -s -X main.version={{.VERSION}}\""}
+]}
