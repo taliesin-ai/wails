@@ -42,12 +42,49 @@ Base: `codex/hcl-build-system` @ bb687a997 (PR 6131). Work branch:
 | `ios:device:list` | no iOS device listing | M1 |
 | ios `ensure-simulator`, android `ensure-emulator` | no auto-provisioning | M1 |
 | ios `deploy-device` | `--device` mandatory | M1 |
-| ios `xcode`, android `studio` | no way to open native projects | pending |
-| `frontend:vendor:puppertino` | no equivalent | pending |
-| windows `install:msix:tools`, `--use-msix-tool` | missing; `tool msix` unregistered | pending |
-| migration info diagnostics | stock aux tasks dropped silently; VITE_PORT blocks | pending (after WP1) |
-| linux `package` default formats | wake default appimage only (Taskfile: +deb,rpm,aur) | pending (migration) |
+| ios `xcode`, android `studio` | no way to open native projects | M3 |
+| `frontend:vendor:puppertino` | no equivalent | D5 |
+| windows `install:msix:tools`, `--use-msix-tool` | missing; `tool msix` unregistered | D5 |
+| migration info diagnostics | stock aux tasks dropped silently; VITE_PORT blocks | WP1b |
+| linux `package` default formats | wake default appimage only (Taskfile: +deb,rpm,aur) | WP1c (`linux.formats`) |
+| `DEV=true` builds | no `wails3 build` equivalent | D4b (`build --dev`) |
+| `setup:docker` | `setup` children registered at root (pre-existing clir bug) | D1c |
+| linux `create:appimage` | stock desktop template had a whitespace-only line; migration fed the deb desktop file to AppImage | D2b |
+| windows `create:nsis:installer` | makensis fails under a non-UTF-8 locale on POSIX hosts | D5b |
 
-## Verification log
+All gaps above are closed on `feat/wake-taskfile-parity`.
 
-- (filled in as work packages land)
+## Stretch: modified Taskfiles
+
+`TestCustomTaskfileCorpus`: 16/16 customisation cases migrate as expected
+(root vars, removed mobile, extra tags, static ldflags, env, custom pre-build
+and post-package steps to generated hook scripts, frontend build/dev commands,
+unrelated tasks, darwin min version, NSIS scope, obfuscation). Dynamic build
+flags, unknown template vars and rewritten build commands block with precise
+diagnostics. Limitation: generated hook scripts are POSIX-only (the hook schema
+has one script per phase); Windows hosts get an info diagnostic.
+
+## Verification log (2026-10-28)
+
+- Unit/integration: `go test ./internal/wake/... ./internal/commands/
+  ./internal/dev/... ./internal/doctor/... ./internal/setupwizard/...
+  ./internal/templates/... ./cmd/wails3/` all ok; vet clean.
+- Stock migration: `TestStockTemplatesMigrateWithoutBlockers` 9/9 templates
+  migrate complete and activate; manual check on react and vue projects.
+- macOS (arm64, native): 34/34 operation checks on a migrated vue project:
+  build, sealed ad-hoc bundle, minos 12.0, cached no-op (0 ran), universal
+  lipo, DMG, obfuscated, tags, windows amd64/arm64 cross with GUI subsystem,
+  server build + cross, `build --dev` flags, android aab/apk (debug-signed,
+  apksigner verified)/universal, puppertino, android devices/studio, setup
+  docker, ios devices, run/dev plans, clean. Live: `wails3 dev` hot rebuild
+  4 s with clean teardown, `wails3 run`, `wails3 run --server` served HTTP 200,
+  `wails3 android run` on the wails-test AVD (Greet round-trip "Hello" from Go).
+- Linux (Fedora 44 container, arm64): build, ELF, cached no-op, package
+  appimage+deb+rpm+archlinux (dpkg-deb/rpm metadata valid, AppImage desktop
+  Categories=Development), windows cross, server, `build --dev`, run/dev plans.
+- Windows (win-node1, amd64, native): migrate, activate, build, cached, PE
+  subsystem GUI, `build --dev`, arm64, server exe, run/dev plans.
+- Not verifiable here: iOS on-device/simulator flows (no Xcode.app on any
+  reachable Mac), Authenticode/notarization signing (no identities), MSIX
+  (needs Windows SDK tools), Linux live GUI dev session (container has no
+  display).
