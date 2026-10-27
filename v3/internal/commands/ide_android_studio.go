@@ -2,12 +2,15 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/pterm/pterm"
 	"github.com/wailsapp/wails/v3/internal/wake/manifest"
@@ -107,5 +110,74 @@ func prepareAndroidStudioProject(staged, root string, pkg pipeline.PackageSpec) 
 	if err := os.Chmod(filepath.Join(staged, "gradlew"), 0o755); err != nil {
 		return err
 	}
-	return nil
+	return writeAndroidLocalProperties(staged)
+}
+
+// writeAndroidLocalProperties records the Android SDK location so Studio does
+// not have to discover it. A local.properties already present in the staged
+// copy came from the user through preserveIDEUserState and is never replaced.
+func writeAndroidLocalProperties(staged string) error {
+	target := filepath.Join(staged, "local.properties")
+	if _, err := os.Lstat(target); err == nil {
+		return nil
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	home, _ := os.UserHomeDir()
+	sdk := androidSDKDir(os.Getenv, runtime.GOOS, home, dirExists)
+	if sdk == "" {
+		return nil
+	}
+	return os.WriteFile(target, []byte(androidLocalPropertiesContent(sdk)), 0o644)
+}
+
+// androidSDKDir resolves the SDK location with the same precedence the
+// pipeline uses (ANDROID_HOME, then ANDROID_SDK_ROOT), falling back to the
+// platform default. It returns "" when no existing directory is found.
+func androidSDKDir(getenv func(string) string, goos, home string, exists func(string) bool) string {
+	for _, candidate := range []string{getenv("ANDROID_HOME"), getenv("ANDROID_SDK_ROOT")} {
+		if candidate != "" && exists(candidate) {
+			return candidate
+		}
+	}
+	var fallback string
+	switch goos {
+	case "darwin":
+		fallback = filepath.Join(home, "Library", "Android", "sdk")
+	case "windows":
+		if local := getenv("LOCALAPPDATA"); local != "" {
+			fallback = filepath.Join(local, "Android", "Sdk")
+		}
+	default:
+		fallback = filepath.Join(home, "Android", "Sdk")
+	}
+	if fallback != "" && exists(fallback) {
+		return fallback
+	}
+	return ""
+}
+
+// androidLocalPropertiesContent renders local.properties with the sdk.dir
+// value escaped by the Java properties rules.
+func androidLocalPropertiesContent(sdk string) string {
+	return "sdk.dir=" + escapeJavaProperty(sdk) + "\n"
+}
+
+// escapeJavaProperty escapes backslashes, colons, equals signs and '#' or '!'
+// so Windows paths such as C:\Users survive a properties parser.
+func escapeJavaProperty(value string) string {
+	var builder strings.Builder
+	for _, r := range value {
+		switch r {
+		case '\\', ':', '=', '#', '!':
+			builder.WriteRune('\\')
+		}
+		builder.WriteRune(r)
+	}
+	return builder.String()
+}
+
+func dirExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.IsDir()
 }
