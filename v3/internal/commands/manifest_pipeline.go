@@ -353,7 +353,7 @@ func resolvedPlanCompilers(plan pipeline.Plan) []manifestPlanCompiler {
 
 func planStage(kind pipeline.NodeKind) string {
 	switch kind {
-	case pipeline.InstallFrontendDependencies:
+	case pipeline.InstallFrontendDependencies, pipeline.TidyGoModules:
 		return "prepare"
 	case pipeline.GenerateBindings, pipeline.GeneratePlatformAssets:
 		return "generate"
@@ -394,6 +394,12 @@ var manifestLipo = ToolLipo
 var manifestToolPackage = toolPackage
 var manifestSign = Sign
 var manifestPrepareDMGForSigning = prepareManifestDMGForSigning
+
+// manifestGoModTidy is the command seam for build.tidy; tests replace it to
+// observe the invocation without touching the module graph.
+var manifestGoModTidy = func(ctx context.Context, dir string, environment []string) (string, error) {
+	return runManifestCommand(ctx, dir, environment, "go", "mod", "tidy")
+}
 var manifestDockerImageIdentity = func(ctx context.Context, runtime, image string) (string, error) {
 	output, err := exec.CommandContext(ctx, runtime, "image", "inspect", "--format", "{{.Id}}", image).Output()
 	if err != nil {
@@ -440,7 +446,7 @@ func (h *manifestHandler) Identity(ctx context.Context, node pipeline.Node) (str
 				tools = append(tools, node)
 			}
 		}
-	case pipeline.GenerateBindings, pipeline.CompileApplication:
+	case pipeline.GenerateBindings, pipeline.CompileApplication, pipeline.TidyGoModules:
 		environment := h.environment
 		if spec, ok := node.Spec.(pipeline.CompileSpec); ok {
 			environment = declaredEnvironment(environment, spec.Environment)
@@ -564,7 +570,7 @@ func relevantEnvironment(node pipeline.Node, overrides []string) string {
 		if spec, ok := node.Spec.(pipeline.FrontendSpec); ok && !spec.Production {
 			keys = append(keys, "FRONTEND_DEVSERVER_URL", wailsVitePort)
 		}
-	case pipeline.GenerateBindings, pipeline.CompileApplication:
+	case pipeline.GenerateBindings, pipeline.CompileApplication, pipeline.TidyGoModules:
 		keys = append(keys, "GOENV", "GOFLAGS", "GOTOOLCHAIN", "GOWORK", "GOROOT", "GOEXPERIMENT", "GOAMD64", "GOARM64", "GO386", "GOARM", "GOMIPS", "GOMIPS64", "GOPPC64", "GORISCV64", "GOWASM", "CGO_ENABLED", "CC", "CXX", "CGO_CFLAGS", "CGO_CPPFLAGS", "CGO_CXXFLAGS", "CGO_LDFLAGS")
 		if spec, ok := node.Spec.(pipeline.CompileSpec); ok && !spec.Production {
 			keys = append(keys, "FRONTEND_DEVSERVER_URL", wailsVitePort)
@@ -670,6 +676,12 @@ func (h *manifestHandler) Run(ctx context.Context, node pipeline.Node) (pipeline
 			return pipeline.RunResult{}, err
 		}
 		return h.collect(spec)
+	case pipeline.TidyGoModules:
+		spec, err := manifestNodeSpec[pipeline.TidySpec](node)
+		if err != nil {
+			return pipeline.RunResult{}, err
+		}
+		return h.tidy(ctx, spec)
 	case pipeline.RunHook:
 		spec, err := manifestNodeSpec[pipeline.HookSpec](node)
 		if err != nil {
@@ -961,6 +973,11 @@ func (h *manifestHandler) bindings(s pipeline.BindingsSpec, output string) (pipe
 	return pipeline.RunResult{}, err
 }
 
+func (h *manifestHandler) tidy(ctx context.Context, _ pipeline.TidySpec) (pipeline.RunResult, error) {
+	output, err := manifestGoModTidy(ctx, h.root, declaredEnvironment(h.environment, nil))
+	return pipeline.RunResult{Detail: output}, err
+}
+
 func (h *manifestHandler) frontend(ctx context.Context, s pipeline.FrontendSpec) (pipeline.RunResult, error) {
 	directory, err := existingPathInsideProject(h.root, s.Directory)
 	if err != nil {
@@ -1034,7 +1051,7 @@ func (h *manifestHandler) compile(ctx context.Context, s pipeline.CompileSpec) (
 		return runErr
 	})
 	if err != nil && strings.Contains(result, "updates to go.mod needed") {
-		return pipeline.RunResult{}, fmt.Errorf("go module files need maintenance; run `go mod tidy` manually: %w", err)
+		return pipeline.RunResult{}, fmt.Errorf("go module files need maintenance; run `go mod tidy` manually or set build.tidy: true: %w", err)
 	}
 	return pipeline.RunResult{Detail: result}, err
 }
@@ -1116,7 +1133,7 @@ func (h *manifestHandler) compileDocker(ctx context.Context, s pipeline.CompileS
 		return runErr
 	})
 	if err != nil && strings.Contains(result, "updates to go.mod needed") {
-		return pipeline.RunResult{}, fmt.Errorf("go module files need maintenance; run `go mod tidy` manually: %w", err)
+		return pipeline.RunResult{}, fmt.Errorf("go module files need maintenance; run `go mod tidy` manually or set build.tidy: true: %w", err)
 	}
 	return pipeline.RunResult{Detail: result}, err
 }

@@ -146,6 +146,11 @@
           },
           "type": "array"
         },
+        "tidy": {
+          "default": false,
+          "description": "Run go mod tidy in the project root before bindings generation and compilation.",
+          "type": "boolean"
+        },
         "trim_path": {
           "default": true,
           "description": "Remove local filesystem paths from production binaries.",
@@ -290,6 +295,11 @@
           "default": "warn",
           "description": "Development log verbosity.",
           "type": "string"
+        },
+        "port": {
+          "default": 9245,
+          "description": "Development server port (1-65535); WAILS_VITE_PORT and --port take precedence.",
+          "type": "integer"
         },
         "tags": {
           "default": [],

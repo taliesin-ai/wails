@@ -303,6 +303,22 @@ func planTarget(config manifest.Config, request Request, multiTarget bool) (Plan
 	for index := range localInputs {
 		localRoots[index] = localInputs[index].Root
 	}
+	// go mod tidy is opt-in. Development keys it on module files only, so it
+	// runs at session start and again only when go.mod or go.sum changes.
+	var tidy NodeKey
+	if config.Build.Tidy {
+		tidyInputs := []InputSpec{{Label: "go-module", Files: goMetadataFiles(config.Root)}}
+		if !request.Development {
+			tidyExcludeDirs := []string{".git", ".wails", "bin", "build", "dist", "node_modules"}
+			if !config.Frontend.Disabled {
+				tidyExcludeDirs = append(tidyExcludeDirs, config.Frontend.Directory)
+			}
+			tidyInputs = append(tidyInputs, InputSpec{Label: "go-tidy-sources", Root: ".", IncludeExtensions: goSourceExtensions(), ExcludeDirs: tidyExcludeDirs})
+			tidyInputs = append(tidyInputs, localInputs...)
+		}
+		tidy = add(Node{Key: "go:tidy", Kind: TidyGoModules, Label: "Tidy Go modules", Scope: ProjectScope, Dependencies: append([]NodeKey(nil), projectHookDeps...),
+			Spec: TidySpec{}, Inputs: tidyInputs, Marker: "go.mod", Cache: CacheReceipt, Claims: ResourceClaims{CPU: 1, MemoryMB: 512}, EstimateMS: 1500})
+	}
 	var frontend NodeKey
 	if !config.Frontend.Disabled {
 		bindingsOut := filepath.ToSlash(filepath.Join(config.Frontend.Directory, config.Frontend.Bindings.OutputDirectory))
@@ -313,7 +329,8 @@ func planTarget(config manifest.Config, request Request, multiTarget bool) (Plan
 		for _, input := range localInputs {
 			bindingInputs = append(bindingInputs, InputSpec{Label: "go-binding-local-api", Root: input.Root, SemanticGo: true, IncludeNames: append([]string(nil), input.IncludeNames...), IncludeExtensions: append([]string(nil), input.IncludeExtensions...), ExcludeDirs: append([]string(nil), input.ExcludeDirs...), ExcludeSuffixes: append([]string(nil), input.ExcludeSuffixes...), UseGitIgnore: input.UseGitIgnore})
 		}
-		bindings := add(Node{Key: "frontend:bindings", Kind: GenerateBindings, Label: "Generate bindings", Scope: ProjectScope, Dependencies: projectHookDeps,
+		bindingDeps := appendUniqueKeys(append([]NodeKey(nil), projectHookDeps...), tidy)
+		bindings := add(Node{Key: "frontend:bindings", Kind: GenerateBindings, Label: "Generate bindings", Scope: ProjectScope, Dependencies: bindingDeps,
 			Spec:   BindingsSpec{Config: config.Frontend.Bindings, Tags: tags, Obfuscated: obfuscated},
 			Inputs: bindingInputs,
 			Output: bindingsOut, Cache: CacheArtifact, Claims: ResourceClaims{CPU: 1, MemoryMB: 512, Exclusive: "legacy-command-adapter"}, EstimateMS: 1000})
@@ -348,6 +365,7 @@ func planTarget(config manifest.Config, request Request, multiTarget bool) (Plan
 	if assets != "" {
 		compileDeps = append(compileDeps, assets)
 	}
+	compileDeps = appendUniqueKeys(compileDeps, tidy)
 	compileExcludeDirs := []string{".git", ".wails", "bin", "build", "dist"}
 	if !config.Frontend.Disabled {
 		compileExcludeDirs = append(compileExcludeDirs, config.Frontend.Directory)
@@ -736,6 +754,8 @@ func originsForNode(config manifest.Config, node Node, target string) []OriginRe
 	switch node.Kind {
 	case InstallFrontendDependencies:
 		prefixes = []string{"frontend.directory", "frontend.install", "frontend.environment"}
+	case TidyGoModules:
+		prefixes = []string{"build.tidy"}
 	case GenerateBindings:
 		prefixes = []string{"frontend.bindings", "build.tags", "build.obfuscated", `targets["` + target + `"].tags`, `targets["` + target + `"].obfuscated`}
 	case BuildFrontend:
