@@ -1281,8 +1281,9 @@ func compileGoArgs(s pipeline.CompileSpec) (string, []string) {
 		ld = appendUniqueStrings(ld, "-w", "-s")
 	}
 	// Production Windows executables are GUI-subsystem binaries; without this
-	// they open a console window alongside the application.
-	if s.TargetOS == "windows" && s.Production && !linkerFlagsSetWindowsGUI(ld) {
+	// they open a console window alongside the application. Server binaries are
+	// console programs and must keep the console subsystem (stdout/stderr).
+	if s.TargetOS == "windows" && s.Production && !s.Server && !linkerFlagsSetWindowsGUI(ld) {
 		ld = append(ld, "-H=windowsgui")
 	}
 	if len(ld) > 0 {
