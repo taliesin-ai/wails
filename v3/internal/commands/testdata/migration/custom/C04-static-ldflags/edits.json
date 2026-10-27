@@ -1,0 +1,5 @@
+{"edits": [
+ {"file": "build/darwin/Taskfile.yml", "old": "-ldflags=\"-w -s", "new": "-ldflags=\"-w -s -X main.mode=prod", "all": true},
+ {"file": "build/linux/Taskfile.yml", "old": "-ldflags=\"-w -s", "new": "-ldflags=\"-w -s -X main.mode=prod", "all": true},
+ {"file": "build/windows/Taskfile.yml", "old": "-ldflags=\"-w -s", "new": "-ldflags=\"-w -s -X main.mode=prod", "all": true}
+]}

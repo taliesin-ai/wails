@@ -1,0 +1,3 @@
+{"edits": [
+ {"file": "build/Taskfile.yml", "old": "{{else}}build{{end}}'", "new": "{{else}}build:prod{{end}}'"}
+]}

@@ -1,0 +1,4 @@
+{"edits": [
+ {"file": "build/Taskfile.yml", "old": "  generate:icons:\n", "new": "  generate:version:\n    summary: Writes the version file\n    cmds:\n      - go generate ./...\n      - echo hi > version.txt\n\n  generate:icons:\n"},
+ {"file": "build/darwin/Taskfile.yml", "old": "      - task: common:generate:icons\n", "new": "      - task: common:generate:version\n      - task: common:generate:icons\n"}
+]}

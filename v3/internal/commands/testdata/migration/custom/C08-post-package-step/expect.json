@@ -1,0 +1,1 @@
+{"complete": true, "manifest": {"hooks.after_package.script": "build/hooks/after_package.sh"}, "activate": true, "plan_nodes": ["hook:after_package"], "known_gap": "a custom post-package step becomes a generated hook script; migration does not yet write hook scripts, only the draft"}

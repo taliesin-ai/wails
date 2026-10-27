@@ -487,8 +487,14 @@ func knownStockTaskfile(path, role string) bool {
 // matchesStockTask reports whether task is identical to the same-named task in
 // one of the stock variants for role.
 func matchesStockTask(role, name string, task *wakeast.Task) bool {
+	if task == nil {
+		return false
+	}
+	// A recognised default change (INSTALL_SCOPE, frontend SCRIPT) keeps the
+	// stock dispatch, so the task still counts as stock for reachability.
+	normalised := normaliseRecognisedDefaults(task)
 	for _, variant := range stockTaskVariants(role) {
-		if expected, ok := variant[name]; ok && reflect.DeepEqual(task, expected) {
+		if expected, ok := variant[name]; ok && (reflect.DeepEqual(task, expected) || reflect.DeepEqual(normalised, expected)) {
 			return true
 		}
 	}
@@ -592,6 +598,9 @@ func analyseMigration(root string) (MigrationReport, manifest.Document, error) {
 	bindingTimeType := ""
 	bindingsCommandSeen := false
 	buildTidy := false
+	customs := newCustomBuildAdjustments()
+	obfuscated := false
+	var garbleArgs []string
 	linuxFormats := false
 	// Replacement actions are collected per distinct action text so each one
 	// is reported once per project, naming every stock task it covers.
@@ -719,8 +728,13 @@ func analyseMigration(root string) (MigrationReport, manifest.Document, error) {
 				continue
 			}
 			if reachable && (containsString(canonical.changed, name) || containsString(canonical.added, name)) {
-				report.Complete = false
-				report.Diagnostics = append(report.Diagnostics, MigrationDiagnostic{Severity: "warning", Code: "modified-task", File: rel, Task: name, Message: "generated task was modified and is not proven representable in config-only YAML; keep using Taskfiles"})
+				outcome := customs.translate(role, name, tf.Tasks[name], stockTaskNamed(role, name))
+				if outcome.translated {
+					report.Diagnostics = append(report.Diagnostics, MigrationDiagnostic{Severity: "info", Code: "translated-custom-task", File: rel, Task: name, Message: customTaskNote(outcome)})
+				} else {
+					report.Complete = false
+					report.Diagnostics = append(report.Diagnostics, MigrationDiagnostic{Severity: "warning", Code: outcome.code, File: rel, Task: name, Message: "generated task was modified and is not proven representable in config-only YAML: " + outcome.message + "; keep using Taskfiles"})
+				}
 			}
 			if reachable && role == "root" && !recognizedRootTask(name, tf.Tasks[name]) {
 				report.Complete = false
@@ -776,6 +790,12 @@ func analyseMigration(root string) (MigrationReport, manifest.Document, error) {
 						buildOutput = candidate
 					}
 				}
+				if key == "OBFUSCATED" && value.Static != "" && !strings.Contains(value.Static, "{{") {
+					obfuscated = value.Static == "true"
+				}
+				if key == "GARBLE_ARGS" && value.Static != "" && !strings.Contains(value.Static, "{{") {
+					garbleArgs = strings.Fields(value.Static)
+				}
 				if key == "VITE_PORT" && value.Static != "" && !strings.Contains(value.Static, "{{") {
 					port, convErr := strconv.Atoi(strings.TrimSpace(value.Static))
 					if convErr != nil || port < 1 || port > 65535 {
@@ -808,6 +828,8 @@ func analyseMigration(root string) (MigrationReport, manifest.Document, error) {
 	}
 	doc := manifest.NewDocument(project)
 	doc.Build.Tidy = buildTidy
+	doc.Build.Obfuscation = obfuscated
+	doc.Build.Go.GarbleArgs = garbleArgs
 	if linuxFormats {
 		doc.Package.Linux.Formats = []string{"appimage", "deb", "rpm", "archlinux"}
 	}
@@ -837,6 +859,7 @@ func analyseMigration(root string) (MigrationReport, manifest.Document, error) {
 	if err := applyConventionalLegacyAssets(root, &report, &doc); err != nil {
 		return report, manifest.Document{}, err
 	}
+	customs.apply(&doc, &report)
 	return report, doc, nil
 }
 

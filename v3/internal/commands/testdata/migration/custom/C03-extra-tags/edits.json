@@ -1,0 +1,5 @@
+{"edits": [
+ {"file": "build/darwin/Taskfile.yml", "old": "{{else}}-tags production{{if", "new": "{{else}}-tags production,mytag{{if"},
+ {"file": "build/linux/Taskfile.yml", "old": "{{else}}-tags production{{if", "new": "{{else}}-tags production,mytag{{if"},
+ {"file": "build/windows/Taskfile.yml", "old": "{{else}}-tags production{{if", "new": "{{else}}-tags production,mytag{{if"}
+]}

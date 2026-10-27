@@ -1,0 +1,3 @@
+{"edits": [
+ {"file": "Taskfile.yml", "old": "tasks:\n  build:\n    summary: Builds the application\n", "new": "tasks:\n  lint:\n    summary: Runs the linters\n    cmds:\n      - go vet ./...\n  build:\n    summary: Builds the application\n"}
+]}

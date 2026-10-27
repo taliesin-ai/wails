@@ -1,0 +1,3 @@
+{"edits": [
+ {"file": "Taskfile.yml", "old": "      - task: \"{{.GOOS}}:package\"\n", "new": "      - task: \"{{.GOOS}}:package\"\n      - echo packaged > packaged.txt\n"}
+]}
