@@ -7,6 +7,10 @@ sidebar:
 
 import { Aside } from '@astrojs/starlight/components';
 
+<Aside type="note" title="With wake">
+Taskfiles are the default build system, and the commands on this page keep working. To build the same app from a `wails.yaml` manifest instead, set `WAILS_EXP_USE_WAKE` and follow [Moving from Taskfiles to wake](/experimental/taskfile-to-wake).
+</Aside>
+
 ## Package Formats
 
 Package your app for Linux distribution:
@@ -109,7 +113,7 @@ ARM64 builds from x86_64 hosts use Docker for CGO cross-compilation.
 Wails v3 builds on **GTK4 with WebKitGTK 6.0** by default. A legacy GTK3 / WebKit2GTK 4.1 path is still available for distributions that don't yet ship WebKitGTK 6.0 (Ubuntu 22.04 LTS, Debian 12, Fedora ≤ 39, RHEL 9.x). The legacy path is opt-in via a build tag and is scheduled for removal in v3.1.
 
 <Aside type="caution" title="Legacy path">
-The GTK3 / WebKit2GTK 4.1 path is supported through the v3.0.x line. Plan to migrate to GTK4 in coordination with your target distribution's GTK4 / WebKitGTK 6.0 availability — `-tags gtk3` will be removed in v3.1.
+The GTK3 / WebKit2GTK 4.1 path is supported through the v3.0.x line. Plan to migrate to GTK4 in coordination with your target distribution's GTK4 / WebKitGTK 6.0 availability, `-tags gtk3` will be removed in v3.1.
 </Aside>
 
 ### Dependencies
@@ -218,6 +222,6 @@ Wails automatically detects this situation by checking system GTK libraries befo
 **What this means:**
 - AppImages will be slightly larger (~20-40%) on affected systems
 - The application functionality is not affected
-- This is handled automatically—no action required
+- This is handled automatically, no action required
 
 If you need smaller AppImages on modern systems, you can install a newer `strip` binary and configure `linuxdeploy` to use it instead of its bundled version.

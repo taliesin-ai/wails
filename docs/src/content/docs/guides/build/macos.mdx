@@ -7,6 +7,10 @@ sidebar:
 
 import { Aside } from '@astrojs/starlight/components';
 
+<Aside type="note" title="With wake">
+Taskfiles are the default build system, and the commands on this page keep working. To build the same app from a `wails.yaml` manifest instead, set `WAILS_EXP_USE_WAKE` and follow [Moving from Taskfiles to wake](/experimental/taskfile-to-wake).
+</Aside>
+
 ## Application Bundle
 
 Package your app as a standard macOS `.app` bundle:
@@ -84,7 +88,7 @@ Build for both Apple Silicon and Intel Macs:
 wails3 task darwin:package:universal
 ```
 
-This creates a single `.app` that runs natively on both architectures. Universal binaries can be built on any platform — on Linux and Windows, `wails3 tool lipo` is used automatically.
+This creates a single `.app` that runs natively on both architectures. Universal binaries can be built on any platform, on Linux and Windows, `wails3 tool lipo` is used automatically.
 
 ## Customizing the Bundle
 

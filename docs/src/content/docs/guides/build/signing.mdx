@@ -15,6 +15,10 @@ This guide covers how to sign your Wails applications for macOS, Windows, and Li
 - **Windows** - Sign your Windows executables and packages
 - **Linux** - Sign DEB and RPM packages with PGP keys
 
+<Aside type="note" title="With wake">
+Taskfiles are the default build system, and the commands on this page keep working. To build the same app from a `wails.yaml` manifest instead, set `WAILS_EXP_USE_WAKE` and follow [Moving from Taskfiles to wake](/experimental/taskfile-to-wake).
+</Aside>
+
 ## Cross-Platform Signing Matrix
 
 This matrix shows what you can sign from each source platform:
@@ -54,8 +58,8 @@ wails3 setup
 This writes a shared signing configuration to `~/.config/wails/defaults.yaml` that is
 **honored at sign time on every platform** (see [Configuration precedence](#configuration-precedence)).
 Its signing step:
-- Detects which signing tools are installed for the platform you want to target —
-  **from any host** — and shows the install command for your OS (e.g.
+- Detects which signing tools are installed for the platform you want to target, 
+  **from any host**, and shows the install command for your OS (e.g.
   `brew install gnupg`, `sudo apt install osslsigncode`, `winget install GnuPG.Gpg4win`).
 - On macOS, lists Developer ID certificates from your keychain.
 - For Linux, lists your GPG keys and can **generate and export** a new one.
@@ -82,7 +86,7 @@ a value, the sign command reports a clear error telling you how to configure it.
 ## Per-project configuration
 
 To configure signing for a single project rather than globally, run the per-project
-wizard from inside the project — it writes the `vars` into that project's
+wizard from inside the project, it writes the `vars` into that project's
 `build/<platform>/Taskfile.yml` files:
 
 ```bash
@@ -303,7 +307,7 @@ certificate**. This uses OpenSSL to create a code-signing `.pfx` and records its
 path in the global config.
 
 <Aside type="caution">
-Self-signed certificates are for **testing and internal distribution only** — they
+Self-signed certificates are for **testing and internal distribution only**, they
 trigger SmartScreen warnings for end users. Public releases need a certificate from
 a trusted CA.
 </Aside>
@@ -364,7 +368,7 @@ Linux packages (DEB and RPM) are signed using PGP/GPG keys. Unlike Windows and m
 
 ### Generating a PGP Key
 
-The easiest way is the setup wizard — run `wails3 setup`, open the **Linux** tab of
+The easiest way is the setup wizard, run `wails3 setup`, open the **Linux** tab of
 the signing step, and choose **Create a new GPG key**. The wizard:
 - generates an RSA 4096 key in your GPG keyring (leave the passphrase blank for an
   unattended, CI-friendly key),
@@ -375,14 +379,14 @@ the signing step, and choose **Create a new GPG key**. The wizard:
 <Aside type="note">
 If a key was configured by **ID only** (e.g. created before the wizard exported keys
 automatically), the Linux tab exports it to a file on your next visit and fills in
-the path — no manual steps needed. Builds sign with a key *file*, so the path is
+the path, no manual steps needed. Builds sign with a key *file*, so the path is
 what matters.
 </Aside>
 
 You can also do it by hand with `gpg`:
 
 ```bash
-# Interactive — the wizard will prompt for name, email, key size and expiry.
+# Interactive, the wizard will prompt for name, email, key size and expiry.
 gpg --full-generate-key
 
 # Export the key pair to ASCII-armoured files for the Taskfile to consume.

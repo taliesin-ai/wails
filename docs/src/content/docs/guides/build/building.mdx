@@ -9,6 +9,10 @@ import { Tabs, TabItem, Aside } from "@astrojs/starlight/components";
 
 Wails v3 uses [Task](https://taskfile.dev) as its build system. The `wails3 build` and `wails3 package` commands are convenient wrappers around Task.
 
+<Aside type="note" title="With wake">
+Taskfiles are the default build system, and the commands on this page keep working. To build the same app from a `wails.yaml` manifest instead, set `WAILS_EXP_USE_WAKE` and follow [Moving from Taskfiles to wake](/experimental/taskfile-to-wake).
+</Aside>
+
 ## Building
 
 Build for the current platform:
@@ -67,9 +71,9 @@ wails3 package GOOS=linux
 ```
 
 This creates platform-specific packages:
-- **Windows**: NSIS installer — see [Windows Packaging](/guides/build/windows)
-- **macOS**: Application bundle (`.app`) — see [macOS Packaging](/guides/build/macos)
-- **Linux**: AppImage, deb, and rpm — see [Linux Packaging](/guides/build/linux)
+- **Windows**: NSIS installer, see [Windows Packaging](/guides/build/windows)
+- **macOS**: Application bundle (`.app`), see [macOS Packaging](/guides/build/macos)
+- **Linux**: AppImage, deb, and rpm, see [Linux Packaging](/guides/build/linux)
 
 ## Custom Build Tags
 

@@ -5,11 +5,15 @@ sidebar:
   order: 4
 ---
 
-import { Tabs, TabItem } from "@astrojs/starlight/components";
+import { Tabs, TabItem, Aside } from "@astrojs/starlight/components";
 
 ## Unified Build System
+<Aside type="note" title="With wake">
+Taskfiles are the default build system, and the commands on this page keep working. To build the same app from a `wails.yaml` manifest instead, set `WAILS_EXP_USE_WAKE` and follow [Moving from Taskfiles to wake](/experimental/taskfile-to-wake).
+</Aside>
 
-Wails provides a **unified build system** that compiles Go code, bundles frontend assets, embeds everything into a single executable, and handles platform-specific builds—all with one command.
+
+Wails provides a **unified build system** that compiles Go code, bundles frontend assets, embeds everything into a single executable, and handles platform-specific builds, all with one command.
 
 ```bash
 wails3 build
@@ -60,7 +64,7 @@ Wails generates type-safe bindings:
 ```javascript
 // Auto-generated: frontend/bindings/<full-go-import-path>/greetservice.js
 // (TypeScript is also generated when you pass `-ts`. The shape below is the real
-// runtime call format — numeric IDs via $Call.ByID, imported from /wails/runtime.js.)
+// runtime call format, numeric IDs via $Call.ByID, imported from /wails/runtime.js.)
 import { Call as $Call } from "/wails/runtime.js";
 
 export function Greet($0) {
@@ -206,10 +210,10 @@ There are no `-platform`, `-o`, `-skipbindings`, `-clean`, `-debug`, `-devbuild`
 Platform builds are exposed as Taskfile tasks under the `darwin:` / `windows:` / `linux:` namespaces (defined in `build/Taskfile.<platform>.yml`). For example:
 
 ```bash
-# macOS — universal binary
+# macOS, universal binary
 wails3 task darwin:build:universal
 
-# macOS — current arch
+# macOS, current arch
 wails3 task darwin:build
 
 # Windows
@@ -249,7 +253,7 @@ wails3 task darwin:package:universal
 Wails 3 projects use [Taskfile](https://taskfile.dev/) as their build orchestrator. The root `Taskfile.yml` includes per-platform task files from `build/`:
 
 ```yaml
-# Taskfile.yml (excerpt — the real templates are richer)
+# Taskfile.yml (excerpt, the real templates are richer)
 version: '3'
 
 includes:
@@ -560,7 +564,7 @@ wails3 task windows:build           # rebuild only the Windows binary
 
 **3. Parallel builds (multi-machine / CI):**
 
-Cross-compilation between Linux/Windows/macOS in v3 generally happens in a Docker `wails-cross` container or on dedicated runners per platform — `wails3 build` itself targets the host OS. See [Cross-platform Builds](/guides/build/cross-platform) for the supported workflows.
+Cross-compilation between Linux/Windows/macOS in v3 generally happens in a Docker `wails-cross` container or on dedicated runners per platform, `wails3 build` itself targets the host OS. See [Cross-platform Builds](/guides/build/cross-platform) for the supported workflows.
 
 **4. Use faster tools:**
 

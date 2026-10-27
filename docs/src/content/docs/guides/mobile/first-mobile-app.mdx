@@ -13,6 +13,10 @@ This guide takes a standard Wails desktop app and runs it on iOS Simulator or An
 
 **Time to complete:** 15–30 minutes (most of that is toolchain installation on first run)
 
+<Aside type="note" title="With wake">
+Taskfiles are the default build system, and the commands on this page keep working. To build the same app from a `wails.yaml` manifest instead, set `WAILS_EXP_USE_WAKE` and follow [Moving from Taskfiles to wake](/experimental/taskfile-to-wake).
+</Aside>
+
 ## Start from a desktop project
 
 If you don't have one yet, create a fresh project:
@@ -28,7 +32,7 @@ Confirm the desktop app works first:
 wails3 dev
 ```
 
-Once it opens, quit and move on. Everything that runs on desktop also runs on mobile — you won't need to touch `main.go` or any Go code for this guide.
+Once it opens, quit and move on. Everything that runs on desktop also runs on mobile, you won't need to touch `main.go` or any Go code for this guide.
 
 ---
 
@@ -40,7 +44,7 @@ Once it opens, quit and move on. Everything that runs on desktop also runs on mo
 ### Requirements
 
 - **macOS** (iOS builds are macOS-only)
-- **Full Xcode** — not just command-line tools. Install from the App Store, then:
+- **Full Xcode**, not just command-line tools. Install from the App Store, then:
 
   ```bash
   sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
@@ -49,7 +53,7 @@ Once it opens, quit and move on. Everything that runs on desktop also runs on mo
 
 - **Go 1.25+** and **npm** (already installed if you ran `wails3 init`)
 
-Run `wails3 doctor` to verify — it lists the iOS SDKs it can find.
+Run `wails3 doctor` to verify, it lists the iOS SDKs it can find.
 
 ### Run on the Simulator
 
@@ -61,13 +65,13 @@ Run `wails3 doctor` to verify — it lists the iOS SDKs it can find.
    wails3 task ios:run
    ```
 
-   That's it — this builds your app, boots a simulator if one isn't already running, and launches it.
+   That's it, this builds your app, boots a simulator if one isn't already running, and launches it.
 
    <Aside type="tip">
    The first run takes a few minutes (it's compiling and caching the Wails framework for iOS). Every run after that is much faster.
    </Aside>
 
-   When it launches, your unmodified desktop app is running on the iOS Simulator — same `main.go`, same frontend:
+   When it launches, your unmodified desktop app is running on the iOS Simulator, same `main.go`, same frontend:
 
    <Image src={iosSimApp} alt="A default Wails app running on the iOS Simulator" width={300} />
 
@@ -83,7 +87,7 @@ Run `wails3 doctor` to verify — it lists the iOS SDKs it can find.
 
 3. **Inspect the WebView**
 
-   In Safari: **Develop → Simulator → your app**. The full Web Inspector works — console, debugger, network panel, everything.
+   In Safari: **Develop → Simulator → your app**. The full Web Inspector works, console, debugger, network panel, everything.
 
 4. **Make a change**
 
@@ -183,7 +187,7 @@ Run `wails3 doctor` to confirm everything is found.
    - Installs and launches it on the emulator
 
    <Aside type="tip">
-   The first build downloads Gradle and compiles the NDK toolchain — expect 5–10 minutes. Subsequent builds are incremental and take under a minute.
+   The first build downloads Gradle and compiles the NDK toolchain, expect 5–10 minutes. Subsequent builds are incremental and take under a minute.
    </Aside>
 
 2. **Stream logs**
@@ -198,7 +202,7 @@ Run `wails3 doctor` to confirm everything is found.
 
 3. **Inspect the WebView**
 
-   Open Chrome and navigate to `chrome://inspect`. Your app's WebView appears under **Remote Target** — click **inspect** to open DevTools.
+   Open Chrome and navigate to `chrome://inspect`. Your app's WebView appears under **Remote Target**, click **inspect** to open DevTools.
 
 4. **Make a change**
 
@@ -215,10 +219,10 @@ Run `wails3 doctor` to confirm everything is found.
 
 Your `main.go` didn't change at all. Wails handled everything:
 
-- **Build system** — `Taskfile.yml` in your project contains `ios:*` and `android:*` tasks that drive the platform-specific toolchain.
-- **Go cross-compilation** — `GOOS=ios` or `GOOS=android` with the appropriate `GOARCH` and sysroot.
-- **Native host** — a generated Xcode project (iOS) or Gradle project (Android) that embeds your compiled Go code and hosts the WebView.
-- **Asset serving** — your `frontend/dist/` is embedded in the Go binary and served in-process. No localhost server is needed.
+- **Build system**, `Taskfile.yml` in your project contains `ios:*` and `android:*` tasks that drive the platform-specific toolchain.
+- **Go cross-compilation**, `GOOS=ios` or `GOOS=android` with the appropriate `GOARCH` and sysroot.
+- **Native host**, a generated Xcode project (iOS) or Gradle project (Android) that embeds your compiled Go code and hosts the WebView.
+- **Asset serving**, your `frontend/dist/` is embedded in the Go binary and served in-process. No localhost server is needed.
 
 ---
 
@@ -299,7 +303,7 @@ func platformOptions() mobileOptions { return mobileOptions{} }
 
 ### Detect the platform in JavaScript and gate mobile-only UI
 
-The `IOS.*` and `Android.*` runtime objects only exist on their respective platforms. Calling them on desktop throws. The right pattern — used by the Kitchen Sink — is to detect the platform once and hide mobile-only controls entirely:
+The `IOS.*` and `Android.*` runtime objects only exist on their respective platforms. Calling them on desktop throws. The right pattern, used by the Kitchen Sink, is to detect the platform once and hide mobile-only controls entirely:
 
 ```javascript
 // Detect platform from the bridge the host injects into the WebView
@@ -337,7 +341,7 @@ package main
 
 import "github.com/wailsapp/wails/v3/pkg/application"
 
-// No-op on desktop — mobile tabs are hidden in the frontend so these
+// No-op on desktop, mobile tabs are hidden in the frontend so these
 // events are never emitted.
 func registerNativeFeatures(app *application.App) {}
 ```
@@ -358,13 +362,13 @@ func registerNativeFeatures(app *application.App) {
 }
 ```
 
-This is the exact pattern the [Kitchen Sink](https://github.com/wailsapp/wails/tree/master/v3/examples/mobile) uses — see `native_features_stub.go`, `native_features_ios.go`, and `native_features_android.go`.
+This is the exact pattern the [Kitchen Sink](https://github.com/wailsapp/wails/tree/master/v3/examples/mobile) uses, see `native_features_stub.go`, `native_features_ios.go`, and `native_features_android.go`.
 
 <Aside type="note" title="Native feature API & event naming">
 Two conventions are worth knowing:
 
 - **Go-side native features use platform managers.** Call them through the
-  `application.IOS.*` and `application.Android.*` singletons — for example
+  `application.IOS.*` and `application.Android.*` singletons, for example
   `application.IOS.Haptic("medium")` or `application.Android.Share(payload)`.
   Each manager only exists on its own platform, so its calls live in
   `//go:build ios` / `//go:build android` files.
@@ -435,7 +439,7 @@ wails3 task ios:package:ipa IOS_PLATFORM=device \
 ```
 
 <Aside type="tip">
-For App Store Connect uploads, use `wails3 task ios:xcode` and let Xcode manage signing and archiving — it handles the complexity of certificates, profiles and notarization automatically.
+For App Store Connect uploads, use `wails3 task ios:xcode` and let Xcode manage signing and archiving, it handles the complexity of certificates, profiles and notarization automatically.
 </Aside>
 
 </TabItem>
@@ -465,7 +469,7 @@ wails3 task android:package:fat
 ```
 
 <Aside type="tip">
-For Play Store uploads, produce an `.aab` (Android App Bundle) instead of an APK — open `build/android/` in Android Studio and use **Build → Generate Signed Bundle / APK**.
+For Play Store uploads, produce an `.aab` (Android App Bundle) instead of an APK, open `build/android/` in Android Studio and use **Build → Generate Signed Bundle / APK**.
 </Aside>
 
 </TabItem>
@@ -525,7 +529,7 @@ wails3 task android:run    # Android Emulator
 wails3 task run            # Desktop
 ```
 
-Browse the source at [`v3/examples/mobile`](https://github.com/wailsapp/wails/tree/master/v3/examples/mobile) — the `native_features_ios.go` and `native_features_android.go` files are particularly useful as copy-paste starting points for platform-specific features.
+Browse the source at [`v3/examples/mobile`](https://github.com/wailsapp/wails/tree/master/v3/examples/mobile), the `native_features_ios.go` and `native_features_android.go` files are particularly useful as copy-paste starting points for platform-specific features.
 
 ## What's next
 
@@ -541,7 +545,7 @@ Browse the source at [`v3/examples/mobile`](https://github.com/wailsapp/wails/tr
     [Android Guide →](/guides/mobile/android)
   </Card>
   <Card title="Kitchen Sink source" icon="open-book">
-    Haptics, geolocation, biometrics, notifications, secure storage — all in one runnable app.
+    Haptics, geolocation, biometrics, notifications, secure storage, all in one runnable app.
 
     [View on GitHub →](https://github.com/wailsapp/wails/tree/master/v3/examples/mobile)
   </Card>

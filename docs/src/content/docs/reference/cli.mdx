@@ -5,9 +5,15 @@ sidebar:
   order: 1
 ---
 
+import { Aside } from '@astrojs/starlight/components';
+
+<Aside type="note" title="With wake">
+Taskfiles are the default build system, and the commands on this page keep working. To build the same app from a `wails.yaml` manifest instead, set `WAILS_EXP_USE_WAKE` and follow [Moving from Taskfiles to wake](/experimental/taskfile-to-wake).
+</Aside>
+
 ## Overview
 
-The Wails CLI (`wails3`) is the command-line entry point for creating, developing, building, signing, packaging, and inspecting Wails 3 applications. Most build orchestration is delegated to per-project Taskfiles (under `build/` in your project) — many `wails3` commands are thin wrappers that invoke a specific task.
+The Wails CLI (`wails3`) is the command-line entry point for creating, developing, building, signing, packaging, and inspecting Wails 3 applications. Most build orchestration is delegated to per-project Taskfiles (under `build/` in your project), many `wails3` commands are thin wrappers that invoke a specific task.
 
 For the most up-to-date help on any command, run:
 
@@ -68,7 +74,7 @@ wails3 <command> --help
 | `wails3 sign [GOOS=…]` | Wrapper that runs the platform-specific `*:sign` Taskfile task for the current OS (or the one specified via `GOOS`). |
 | `wails3 tool sign` | Low-level direct signing entry point. Flags: `--input`, `--output`, `--verbose`, `--certificate`, `--password`, `--thumbprint`, `--timestamp`, `--identity`, `--entitlements`, `--hardened-runtime`, `--notarize`, `--keychain-profile`, `--pgp-key`, `--pgp-password`, `--role`. |
 
-There is **no** `wails3 signing` subcommand — for keychain credentials use `xcrun notarytool store-credentials`, and for PGP keys use `gpg` directly (the `wails3 setup signing` wizard automates both).
+There is **no** `wails3 signing` subcommand, for keychain credentials use `xcrun notarytool store-credentials`, and for PGP keys use `gpg` directly (the `wails3 setup signing` wizard automates both).
 
 ## Tools
 

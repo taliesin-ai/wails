@@ -5,7 +5,13 @@ sidebar:
   order: 1
 ---
 
+import { Aside } from '@astrojs/starlight/components';
+
 The Wails CLI provides a comprehensive set of commands to help you develop, build, and maintain your Wails applications.
+
+<Aside type="note" title="With wake">
+Taskfiles are the default build system, and the commands on this page keep working. To build the same app from a `wails.yaml` manifest instead, set `WAILS_EXP_USE_WAKE` and follow [Moving from Taskfiles to wake](/experimental/taskfile-to-wake).
+</Aside>
 
 ## Core Commands
 

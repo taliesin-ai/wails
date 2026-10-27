@@ -1,6 +1,6 @@
 ---
 title: Android
-description: Build and run Wails applications on Android — toolchain setup, emulator, APK signing, Play Store packaging, and API reference
+description: Build and run Wails applications on Android, toolchain setup, emulator, APK signing, Play Store packaging, and API reference
 sidebar:
   order: 4
   badge:
@@ -21,7 +21,7 @@ New to mobile with Wails? Start with [Your First Mobile App →](/guides/mobile/
 Wails v3 applications run on Android as native apps: an Android `WebView`
 renders the frontend, assets are served **in-process** through a
 `WebViewAssetLoader` backed by the Go asset server (no localhost server, no
-open ports), and the standard `@wailsio/runtime` works unchanged — service
+open ports), and the standard `@wailsio/runtime` works unchanged, service
 bindings, events, dialogs and the clipboard route through the Go message
 processor.
 
@@ -30,10 +30,14 @@ a C shared library (`libwails.so`, `GOOS=android` + the NDK toolchain) and
 loaded by a small Java host. Android-specific behaviour lives in per-platform
 Go files guarded by `//go:build android`.
 
+<Aside type="note" title="With wake">
+Taskfiles are the default build system, and the commands on this page keep working. To build the same app from a `wails.yaml` manifest instead, set `WAILS_EXP_USE_WAKE` and follow [Moving from Taskfiles to wake](/experimental/taskfile-to-wake).
+</Aside>
+
 ## Requirements
 
 - The **Android SDK** with platform-tools, an SDK platform (API 35),
-  build-tools and the **NDK** (26.3.x) — `wails3 doctor` shows what it finds
+  build-tools and the **NDK** (26.3.x), `wails3 doctor` shows what it finds
 - A **JDK** (e.g. OpenJDK 21) for Gradle; set `JAVA_HOME` if `java` is not on
   your `PATH`
 - Go 1.25+ and npm
@@ -144,7 +148,7 @@ the build tasks.
 | Service bindings, events (both directions) | ✅ |
 | Message dialogs | ✅ AlertDialog with button callbacks |
 | Open file / files dialogs | ✅ Storage Access Framework (files imported as cache copies) |
-| Open directory / save file dialogs | ❌ Return an error — write inside the app sandbox instead |
+| Open directory / save file dialogs | ❌ Return an error, write inside the app sandbox instead |
 | Clipboard | ✅ ClipboardManager |
 | Screens API | ✅ WindowMetrics incl. system-bar work area |
 | Lifecycle events (`events.Android.*`) | ✅ |
