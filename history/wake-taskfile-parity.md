@@ -51,6 +51,7 @@ Base: `codex/hcl-build-system` @ bb687a997 (PR 6131). Work branch:
 | `setup:docker` | `setup` children registered at root (pre-existing clir bug) | D1c |
 | linux `create:appimage` | stock desktop template had a whitespace-only line; migration fed the deb desktop file to AppImage | D2b |
 | windows `create:nsis:installer` | makensis fails under a non-UTF-8 locale on POSIX hosts | D5b |
+| windows `create:msix:package`, `sign`, `sign:installer` | SDK/NSIS tools only found on PATH (installers don't add them); MSIX publisher mismatch silent then opaque signtool error | D5c |
 | common `ios:run:device` `TEAM_ID` | no manifest field | M3b (`ios.signing.team_id`) |
 | linux `sign:deb`, `sign:rpm`, `sign:packages` | needed dpkg-sig (gone from current distros); rpmsign never selected a key | D2c (native nfpm signing) |
 
@@ -90,11 +91,17 @@ has one script per phase); Windows hosts get an info diagnostic.
   passphrase-protected): `wails3 build release` with `sign: true` produced
   signed deb+rpm; `rpm -K` reports signatures OK and the deb `_gpgorigin`
   verifies as a Good signature.
-- NSIS: installer built and verified on macOS (makensis 3.13, C locale);
-  not run on a Windows host (makensis absent on win-node1).
+- NSIS: installer built and verified on macOS (makensis 3.13, C locale).
+- Windows host (win-node1, SDK 10.0.26100 + NSIS, nothing added to PATH;
+  throwaway PFX used from a file, no certificate store changes): wake found
+  makensis/MakeAppx/signtool itself; NSIS and MSIX packaged; a release profile
+  with `sign: true` produced Authenticode-signed, DigiCert-timestamped
+  `signapp-installer.exe` and `signapp.msix` (signer CN=Wails Wake Test,
+  status UnknownError only because the test root is untrusted); a publisher
+  mismatch fails at validation with the file, line and both values.
 - Not verifiable here: iOS on-device/simulator flows (no Xcode.app on any
-  reachable Mac), macOS codesign with a real identity, notarization and Authenticode (no
-  identities or Apple account; Linux signing is verified above), MSIX (needs Windows SDK tools), Xcode project signing with `ios.signing.team_id`, Linux live GUI dev session
+  reachable Mac), macOS codesign with a real identity and notarization (no Apple
+  identity or account; Linux signing is verified above), Xcode project signing with `ios.signing.team_id`, Linux live GUI dev session
   (container has no display). These are unit-tested and code-reviewed only.
 - Review: CodeRabbit on v3/internal/commands (94 files, 3 minor) and
   v3/internal/wake (1 minor); all 4 findings fixed with regression tests.
