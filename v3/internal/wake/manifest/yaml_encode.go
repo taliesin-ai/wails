@@ -125,7 +125,7 @@ func encodeConfigYAML(config Config, header string) ([]byte, error) {
 		value   Platform
 		signing SigningPlatform
 	}{{"windows", config.Targets.Windows, config.Signing.Windows}, {"darwin", config.Targets.Darwin, config.Signing.Darwin}, {"linux", config.Targets.Linux, config.Signing.Linux}, {"ios", config.Targets.IOS, config.Signing.IOS}, {"android", config.Targets.Android, config.Signing.Android}} {
-		if platform := encodeYAMLPlatform(item.name, item.value, item.signing); platform != nil {
+		if platform := encodeYAMLPlatform(item.name, item.value, item.signing, packagePlatformByName(&config.Package, item.name).Formats); platform != nil {
 			yamlSet(root, item.name, platform)
 		}
 	}
@@ -248,8 +248,9 @@ func encodeConfigYAML(config Config, header string) ([]byte, error) {
 	return marshalYAML(root)
 }
 
-func encodeYAMLPlatform(name string, platform Platform, signing SigningPlatform) *yaml.Node {
-	if !platformConfigured(platform) && signing == (SigningPlatform{}) {
+func encodeYAMLPlatform(name string, platform Platform, signing SigningPlatform, formats []string) *yaml.Node {
+	writeFormats := platformFormatsOverride(name, formats)
+	if !platformConfigured(platform) && signing == (SigningPlatform{}) && !writeFormats {
 		return nil
 	}
 	result := yamlMap()
@@ -287,6 +288,9 @@ func encodeYAMLPlatform(name string, platform Platform, signing SigningPlatform)
 	}
 	if platformAttributeAllowed(name, "background_modes") {
 		yamlSetOptionalStrings(result, "background_modes", platform.BackgroundModes, false)
+	}
+	if writeFormats {
+		yamlSetOptionalStrings(result, "formats", formats, true)
 	}
 	if signing.Enabled || signingHasValues(signing) {
 		node := yamlMap()

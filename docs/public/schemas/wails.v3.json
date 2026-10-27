@@ -23,6 +23,13 @@
           "description": "Name displayed by the mobile platform.",
           "type": "string"
         },
+        "formats": {
+          "description": "Package formats produced by `wails3 package` for this platform when no profile or --formats selects them; overrides the built-in default.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "icon": {
           "description": "Project-relative user-owned icon file.",
           "type": "string"
@@ -646,6 +653,13 @@
           "description": "User-owned Linux desktop-entry file.",
           "type": "string"
         },
+        "formats": {
+          "description": "Package formats produced by `wails3 package` for this platform when no profile or --formats selects them; overrides the built-in default.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "icon": {
           "description": "Project-relative user-owned icon file.",
           "type": "string"
@@ -1233,6 +1247,13 @@
         },
         "capabilities": {
           "description": "Native platform capabilities requested by the application.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "formats": {
+          "description": "Package formats produced by `wails3 package` for this platform when no profile or --formats selects them; overrides the built-in default.",
           "items": {
             "type": "string"
           },

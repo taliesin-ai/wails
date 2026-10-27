@@ -452,6 +452,11 @@ func TestEjectionCoversEveryPlatformSchemaField(t *testing.T) {
 		BackgroundModes: []string{"audio"}, VersionName: "1.0", VersionCode: 7, MinimumSDK: 24, TargetSDK: 35,
 	}
 	doc.Targets.Windows, doc.Targets.Darwin, doc.Targets.Linux, doc.Targets.IOS, doc.Targets.Android = all, all, all, all, all
+	// Platform formats are only written when they differ from the default, so
+	// the fixture picks a non-default list for each platform that accepts one.
+	doc.Package.Windows.Formats = []string{"msix"}
+	doc.Package.Linux.Formats = []string{"deb"}
+	doc.Package.Android.Formats = []string{"apk"}
 	signing := SigningPlatform{Enabled: true, Identity: "identity", Certificate: "certificate", Thumbprint: "thumbprint", TimestampServer: "timestamp", Entitlements: "entitlements", ProvisioningProfile: "profile", KeyAlias: "alias", Credential: "credential", Notarize: true, NotarizationCredential: "notary"}
 	doc.Signing.Windows, doc.Signing.Darwin, doc.Signing.Linux, doc.Signing.IOS, doc.Signing.Android = signing, signing, signing, signing, signing
 

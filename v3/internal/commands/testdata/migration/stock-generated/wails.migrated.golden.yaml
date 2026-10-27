@@ -50,6 +50,8 @@ darwin:
   minimum_version: "12.0"
   icon: build/darwin/icons.icns
   info_plist: build/darwin/Info.plist
+linux:
+  formats: [appimage, deb, rpm, archlinux]
 targets:
   windows/amd64: {}
   windows/arm64: {}

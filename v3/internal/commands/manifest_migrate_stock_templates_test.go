@@ -62,9 +62,9 @@ func TestStockTemplatesMigrateWithoutBlockers(t *testing.T) {
 			assert.Equal(t, expected.interfaces, loaded.Config.Frontend.Bindings.Interfaces, "interfaces")
 			assert.Equal(t, expected.timeType, loaded.Config.Frontend.Bindings.TimeType, "time_type")
 			assert.True(t, loaded.Config.Build.Tidy, "stock go:mod:tidy must carry over as build.tidy")
-			// Stock Linux packaging creates four formats, but the manifest has no
-			// YAML setting for default Linux formats, so the gap is reported.
-			assert.Contains(t, migrationDiagnosticCodes(report), "package-formats-unrepresentable")
+			// Stock Linux packaging creates the same four formats as wails3 package.
+			assert.Equal(t, []string{"appimage", "deb", "rpm", "archlinux"}, loaded.Config.Package.Linux.Formats)
+			assert.Contains(t, migrationDiagnosticCodes(report), "translated-package-formats")
 			assert.Contains(t, migrationDiagnosticCodes(report), "darwin-dmg-default")
 			buildServer := 0
 			for _, diagnostic := range report.Diagnostics {

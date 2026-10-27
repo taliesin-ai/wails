@@ -113,6 +113,7 @@ type manifestPlatform struct {
 	MinimumVersion   *string               `manifest:"minimum_version,optional" platforms:"windows,darwin,linux,ios"`
 	BuildNumber      *int                  `manifest:"build_number,optional" platforms:"windows,darwin,linux,ios"`
 	Capabilities     *[]string             `manifest:"capabilities,optional" platforms:"windows,darwin,linux,ios"`
+	Formats          *[]string             `manifest:"formats,optional" platforms:"windows,linux,android"`
 	Icon             *string               `manifest:"icon,optional" platforms:"windows,darwin,linux,ios,android"`
 	Manifest         *string               `manifest:"manifest,optional" platforms:"windows,android"`
 	AssetsCar        *string               `manifest:"assets_car,optional" platforms:"darwin,ios"`
@@ -484,6 +485,7 @@ func applyPlatform(doc *Document, name string, raw *manifestPlatform) {
 	setString(&platform.MinimumVersion, raw.MinimumVersion)
 	setInt(&platform.BuildNumber, raw.BuildNumber)
 	setStrings(&platform.Capabilities, raw.Capabilities)
+	setStrings(&packagePlatformByName(&doc.Package, name).Formats, raw.Formats)
 	setString(&platform.Icon, raw.Icon)
 	setString(&platform.Manifest, raw.Manifest)
 	setString(&platform.AssetsCar, raw.AssetsCar)
@@ -744,6 +746,73 @@ func platformByName(targets *Targets, name string) *Platform {
 	default:
 		return &targets.Android
 	}
+}
+
+func packagePlatformByName(packages *Packages, name string) *PackagePlatform {
+	switch name {
+	case "windows":
+		return &packages.Windows
+	case "darwin":
+		return &packages.Darwin
+	case "linux":
+		return &packages.Linux
+	case "ios":
+		return &packages.IOS
+	default:
+		return &packages.Android
+	}
+}
+
+// validatePlatformFormats checks the per-platform default package formats.
+// Each format must be a production format owned by the platform, so the
+// error names the allowed values rather than failing later in the pipeline.
+func validatePlatformFormats(packages Packages) error {
+	for _, name := range []string{"windows", "darwin", "linux", "ios", "android"} {
+		formats := packagePlatformByName(&packages, name).Formats
+		if formats == nil {
+			continue
+		}
+		field := name + ".formats"
+		if len(formats) == 0 {
+			return fieldValidationError(field, "must list at least one package format")
+		}
+		allowed := []string{}
+		for _, capability := range buildinfo.FormatCapabilities() {
+			if capability.Platform == name && capability.Production {
+				allowed = append(allowed, capability.Name)
+			}
+		}
+		seen := map[string]bool{}
+		for _, format := range formats {
+			if seen[format] {
+				return fieldValidationError(field, "contains duplicate format %q", format)
+			}
+			seen[format] = true
+			if !contains(allowed, format) {
+				return fieldValidationError(field, "format %q is not a production package format for %s; allowed values: %s", format, name, strings.Join(allowed, ", "))
+			}
+		}
+	}
+	return nil
+}
+
+// platformFormatsOverride reports whether formats must be written for name:
+// only a non-empty list that differs from the built-in default is written.
+func platformFormatsOverride(name string, formats []string) bool {
+	if len(formats) == 0 {
+		return false
+	}
+	defaultDocument := defaults(Project{})
+	defaultFormats := packagePlatformByName(&defaultDocument.Package, name).Formats
+	if len(formats) != len(defaultFormats) {
+		return true
+	}
+	for index := range formats {
+		if formats[index] != defaultFormats[index] {
+			return true
+		}
+	}
+	return false
 }
 
 func signingByName(signing *Signing, name string) *SigningPlatform {

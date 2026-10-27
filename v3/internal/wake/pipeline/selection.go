@@ -22,12 +22,16 @@ func resolveBuildOutcomes(config manifest.Config, request Request) ([]buildOutco
 		if len(request.Targets) != 0 || request.TargetOS != "" || request.TargetArch != "" || len(request.Formats) != 0 {
 			return nil, fmt.Errorf("profile %q is a complete build request and cannot be combined with --targets or --formats", config.Selected.Name)
 		}
-		return resolveProfileOutcomes(config.Selected)
+		return resolveProfileOutcomes(config, request.Verb)
 	}
 	return resolveAnonymousOutcomes(config, request)
 }
 
-func resolveProfileOutcomes(profile manifest.Profile) ([]buildOutcome, error) {
+// resolveProfileOutcomes applies the profile's per-target formats. A target
+// without formats uses the platform default only when packaging or signing,
+// matching anonymous requests; plain builds keep producing no packages.
+func resolveProfileOutcomes(config manifest.Config, verb string) ([]buildOutcome, error) {
+	profile := config.Selected
 	if len(profile.Targets) == 0 {
 		return nil, fmt.Errorf("profile %q requires at least one target", profile.Name)
 	}
@@ -47,7 +51,11 @@ func resolveProfileOutcomes(profile manifest.Profile) ([]buildOutcome, error) {
 		if !ok {
 			return nil, unsupportedTargetError(target.OS, target.Arch)
 		}
-		formats, err := resolveFormatsForTarget(capability, selected.Formats, false)
+		requested := selected.Formats
+		if len(requested) == 0 && (verb == "package" || verb == "sign") {
+			requested = packagePlatform(config.Package, target.OS).Formats
+		}
+		formats, err := resolveFormatsForTarget(capability, requested, false)
 		if err != nil {
 			return nil, fmt.Errorf("profile %q target %s: %w", profile.Name, name, err)
 		}
