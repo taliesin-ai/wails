@@ -276,6 +276,9 @@ type PackageSpec struct {
 	// DebugSign signs the release output with the Android debug keystore because
 	// no sign stage will sign it in this run. Such output is not for distribution.
 	DebugSign bool
+	// AdhocSign asks app assembly to ad-hoc sign the bundle on darwin hosts.
+	// It is set only when the pipeline will not sign the bundle with an identity.
+	AdhocSign bool
 }
 type SignSpec struct {
 	TargetOS, TargetArch, Format, Input string

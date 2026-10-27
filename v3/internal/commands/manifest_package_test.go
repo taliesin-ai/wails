@@ -1,9 +1,13 @@
 package commands
 
 import (
+	"context"
+	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -23,7 +27,7 @@ func TestDarwinAppUsesExactCustomInfoPlist(t *testing.T) {
 	spec.Binary = "bin/example"
 	spec.Assets = ".wails/assets"
 	spec.Output = "dist/Example.app"
-	_, err := (&manifestHandler{root: root}).packageApp(spec)
+	_, err := (&manifestHandler{root: root}).packageApp(context.Background(), spec)
 	require.NoError(t, err)
 	data, err := os.ReadFile(filepath.Join(root, "dist", "Example.app", "Contents", "Info.plist"))
 	require.NoError(t, err)
@@ -398,4 +402,116 @@ func packageTestSpec(platform, arch, format string) pipeline.PackageSpec {
 		Profile: "default",
 		Project: manifest.Project{Name: "example", ProductName: "Example", BinaryName: "example", Identifier: "com.example.app", Version: "1.0.0"},
 	}
+}
+
+const testDarwinInfoPlist = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleExecutable</key>
+	<string>example</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.example.app</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+</dict>
+</plist>
+`
+
+func TestDarwinDevelopmentInfoPlistAddsLocalNetworkingOnly(t *testing.T) {
+	merged, err := darwinDevelopmentInfoPlist([]byte(testDarwinInfoPlist))
+	require.NoError(t, err)
+	assert.Contains(t, string(merged), "NSAllowsLocalNetworking")
+	assert.Contains(t, string(merged), "com.example.app")
+	assert.NotContains(t, string(merged), "NSAllowsArbitraryLoads")
+	assert.NotContains(t, string(merged), "NSAllowsArbitraryLoadsInWebContent")
+	assert.NotContains(t, testDarwinInfoPlist, "NSAllowsLocalNetworking", "release plist input must not gain the exception")
+}
+
+func TestShouldAdhocSignBundleOnlyForDarwinHostsWithoutPipelineSigning(t *testing.T) {
+	assert.True(t, shouldAdhocSignBundle("darwin", pipeline.PackageSpec{AdhocSign: true}))
+	assert.False(t, shouldAdhocSignBundle("darwin", pipeline.PackageSpec{}))
+	assert.False(t, shouldAdhocSignBundle("linux", pipeline.PackageSpec{AdhocSign: true}))
+	assert.False(t, shouldAdhocSignBundle("windows", pipeline.PackageSpec{AdhocSign: true}))
+}
+
+func TestDarwinAppDevelopmentPrefersGeneratedDevPlist(t *testing.T) {
+	for _, development := range []bool{false, true} {
+		root := t.TempDir()
+		assets := filepath.Join(root, ".wails", "assets", "darwin")
+		require.NoError(t, os.MkdirAll(assets, 0o755))
+		require.NoError(t, os.MkdirAll(filepath.Join(root, "bin"), 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(root, "bin", "example"), []byte("binary"), 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(assets, "Info.plist"), []byte(testDarwinInfoPlist), 0o644))
+		require.NoError(t, os.WriteFile(filepath.Join(assets, "Info.dev.plist"), []byte(strings.Replace(testDarwinInfoPlist, "<key>CFBundlePackageType</key>", "<key>DevMarker</key>\n\t<string>dev</string>\n\t<key>CFBundlePackageType</key>", 1)), 0o644))
+		spec := packageTestSpec("darwin", "arm64", "app")
+		spec.Binary = "bin/example"
+		spec.Assets = ".wails/assets"
+		spec.Output = "dist/Example.app"
+		spec.Development = development
+		_, err := (&manifestHandler{root: root}).packageApp(context.Background(), spec)
+		require.NoError(t, err)
+		data, err := os.ReadFile(filepath.Join(root, "dist", "Example.app", "Contents", "Info.plist"))
+		require.NoError(t, err)
+		if development {
+			assert.Contains(t, string(data), "DevMarker", "development assembly uses the generated dev plist")
+		} else {
+			assert.NotContains(t, string(data), "NSAllowsLocalNetworking")
+			assert.NotContains(t, string(data), "DevMarker")
+		}
+	}
+}
+
+func TestDarwinAdhocSignedBundleHasSealedResources(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("codesign is only available on darwin")
+	}
+	if _, err := exec.LookPath("codesign"); err != nil {
+		t.Skip("codesign not found")
+	}
+	root := t.TempDir()
+	assets := filepath.Join(root, ".wails", "assets", "darwin")
+	require.NoError(t, os.MkdirAll(assets, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(assets, "Info.plist"), []byte(testDarwinInfoPlist), 0o644))
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "bin"), 0o755))
+	// /usr/bin/true is a real Mach-O executable, so codesign can seal the bundle.
+	require.NoError(t, copyManifestPath("/usr/bin/true", filepath.Join(root, "bin", "example")))
+	spec := packageTestSpec("darwin", "arm64", "app")
+	spec.Binary = "bin/example"
+	spec.Assets = ".wails/assets"
+	spec.Output = "dist/Example.app"
+	spec.AdhocSign = true
+	_, err := (&manifestHandler{root: root}).packageApp(context.Background(), spec)
+	require.NoError(t, err)
+	output, err := exec.Command("codesign", "-dv", filepath.Join(root, "dist", "Example.app")).CombinedOutput()
+	require.NoError(t, err, string(output))
+	assert.Contains(t, string(output), "Signature=adhoc")
+	assert.Contains(t, string(output), "Identifier=com.example.app")
+	assert.Contains(t, string(output), "Sealed Resources")
+}
+
+func TestDarwinAppPublishesWithReadableDirectories(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX directory modes are not meaningful on windows")
+	}
+	root := t.TempDir()
+	assets := filepath.Join(root, ".wails", "assets", "darwin")
+	require.NoError(t, os.MkdirAll(assets, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(assets, "Info.plist"), []byte(testDarwinInfoPlist), 0o644))
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "bin"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "bin", "example"), []byte("binary"), 0o755))
+	spec := packageTestSpec("darwin", "arm64", "app")
+	spec.Binary = "bin/example"
+	spec.Assets = ".wails/assets"
+	spec.Output = "dist/Example.app"
+	_, err := (&manifestHandler{root: root}).packageApp(context.Background(), spec)
+	require.NoError(t, err)
+	for _, dir := range []string{"dist/Example.app", "dist/Example.app/Contents", "dist/Example.app/Contents/MacOS"} {
+		info, err := os.Stat(filepath.Join(root, dir))
+		require.NoError(t, err)
+		assert.Equal(t, fs.FileMode(0o755), info.Mode().Perm(), dir)
+	}
+	info, err := os.Stat(filepath.Join(root, "dist", "Example.app", "Contents", "MacOS", "example"))
+	require.NoError(t, err)
+	assert.Equal(t, fs.FileMode(0o755), info.Mode().Perm()&0o755, "executable keeps its mode")
 }

@@ -2,6 +2,7 @@ package commands
 
 import (
 	"bytes"
+	"context"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/wailsapp/wails/v3/internal/wake/manifest"
@@ -12,6 +13,7 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -78,8 +80,17 @@ func TestManifestRegressionDevPreservesProductionBundle(t *testing.T) {
 	require.NoError(t, os.WriteFile(sentinel, []byte("production"), 0644))
 	binary := filepath.Join(root, spec.Binary)
 	require.NoError(t, os.MkdirAll(filepath.Dir(binary), 0755))
-	require.NoError(t, os.WriteFile(binary, []byte("development executable"), 0755))
-	_, err = (&manifestHandler{root: root, config: loaded.Config}).packageApp(spec)
+	if runtime.GOOS == "darwin" {
+		// Development assembly ad-hoc signs the bundle, which needs a real Mach-O
+		// executable and the Info.plist that generated assets always provide.
+		require.NoError(t, copyManifestPath("/usr/bin/true", binary))
+		darwinAssets := filepath.Join(root, spec.Assets, "darwin")
+		require.NoError(t, os.MkdirAll(darwinAssets, 0755))
+		require.NoError(t, os.WriteFile(filepath.Join(darwinAssets, "Info.plist"), []byte(testDarwinInfoPlist), 0644))
+	} else {
+		require.NoError(t, os.WriteFile(binary, []byte("development executable"), 0755))
+	}
+	_, err = (&manifestHandler{root: root, config: loaded.Config}).packageApp(context.Background(), spec)
 	require.NoError(t, err)
 	_, err = os.Stat(sentinel)
 	assert.NoError(t, err, "development assembly must preserve production bundle")

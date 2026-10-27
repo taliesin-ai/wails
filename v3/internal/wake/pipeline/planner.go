@@ -471,7 +471,7 @@ func planTarget(config manifest.Config, request Request, multiTarget bool) (Plan
 			cachePolicy = CacheNever
 		}
 		lastRunnable = add(Node{Key: NodeKey("assemble:" + target), Kind: AssembleApplication, Label: "Assemble " + target + " application", Scope: TargetScope, Dependencies: assemblyDependencies,
-			Spec:   PackageSpec{Development: request.Development, TargetOS: request.TargetOS, TargetArch: request.TargetArch, Format: "app", Binary: binaryOut, Binaries: append([]ComponentBinary(nil), componentBinaries...), Assets: assetsOut, Output: output, Profile: profileName, Destination: destination, MinimumVersion: targetSettings.MinimumVersion, Config: packageConfig, Project: project, Capabilities: platformSettings.Capabilities, Associations: associations, Protocols: protocols},
+			Spec:   PackageSpec{Development: request.Development, TargetOS: request.TargetOS, TargetArch: request.TargetArch, Format: "app", Binary: binaryOut, Binaries: append([]ComponentBinary(nil), componentBinaries...), Assets: assetsOut, Output: output, Profile: profileName, Destination: destination, MinimumVersion: targetSettings.MinimumVersion, Config: packageConfig, Project: project, Capabilities: platformSettings.Capabilities, Associations: associations, Protocols: protocols, AdhocSign: adhocSignsBundle(request.TargetOS, request.sign)},
 			Inputs: []InputSpec{{Label: "compiled-application", Files: []string{binaryOut, assetsOut}}}, Output: output, Cache: cachePolicy, Claims: ResourceClaims{CPU: 1, MemoryMB: 1024, Exclusive: packageExclusive(request.TargetOS, "app")}, EstimateMS: 500, Artifact: ArtifactIdentity{Kind: ArtifactBundle, Target: Target{OS: request.TargetOS, Arch: request.TargetArch}, Format: "app"}})
 	}
 
@@ -515,7 +515,7 @@ func planTarget(config manifest.Config, request Request, multiTarget bool) (Plan
 			if capability.Runnable == runnableApp {
 				destination = runnableOutput(config, request.TargetOS, request.TargetArch, capability, multiTarget)
 			}
-			published := publish(signed, signedPublicationPath(destination, request.TargetOS))
+			published := publish(signed, destination)
 			if afterSign != "" {
 				node := plan.Nodes[published]
 				node.Dependencies = appendUniqueKeys(node.Dependencies, afterSign)
@@ -605,7 +605,7 @@ func planTarget(config manifest.Config, request Request, multiTarget bool) (Plan
 		releaseSigned := releaseAPK && config.Signing.Android.Enabled
 		debugSign := releaseAPK && !releaseSigned && !request.sign
 		pkg := add(Node{Key: key, Kind: PackageArtifact, Label: "Package " + format, Scope: PackageScope, Dependencies: packageDeps,
-			Spec:   PackageSpec{Development: request.Development, TargetOS: request.TargetOS, TargetArch: request.TargetArch, Format: format, Binary: packageBinary, Binaries: append([]ComponentBinary(nil), componentBinaries...), Assets: assetsOut, Output: output, Profile: profileName, Destination: destination, MinimumVersion: targetSettings.MinimumVersion, Config: pkgConfig, Project: project, Capabilities: platformSettings.Capabilities, Associations: associations, Protocols: protocols, Release: releaseAPK, DebugSign: debugSign},
+			Spec:   PackageSpec{Development: request.Development, TargetOS: request.TargetOS, TargetArch: request.TargetArch, Format: format, Binary: packageBinary, Binaries: append([]ComponentBinary(nil), componentBinaries...), Assets: assetsOut, Output: output, Profile: profileName, Destination: destination, MinimumVersion: targetSettings.MinimumVersion, Config: pkgConfig, Project: project, Capabilities: platformSettings.Capabilities, Associations: associations, Protocols: protocols, Release: releaseAPK, DebugSign: debugSign, AdhocSign: adhocSignsBundle(request.TargetOS, request.sign)},
 			Inputs: packageInputs(config.Root, request.TargetOS, format, pkgConfig), Output: output, Cache: packageCache, Claims: ResourceClaims{CPU: 1, MemoryMB: 1024, Exclusive: packageExclusive(request.TargetOS, format)}, EstimateMS: 1000, Artifact: ArtifactIdentity{Kind: ArtifactPackage, Target: Target{OS: request.TargetOS, Arch: request.TargetArch}, Format: format}})
 		packageRoots = append(packageRoots, pkg)
 		if releaseSigned {
@@ -639,7 +639,7 @@ func planTarget(config manifest.Config, request Request, multiTarget bool) (Plan
 			identity.Signed, identity.Notarized = true, config.Signing.Darwin.Notarize
 			signedKey := add(Node{Key: NodeKey(string(artifact) + ":sign"), Kind: SignArtifact, Label: "Sign " + filepath.Base(input), Scope: PackageScope, Dependencies: dependencies, Spec: SignSpec{TargetOS: request.TargetOS, TargetArch: request.TargetArch, Format: identity.Format, Input: input, Config: signingPlatformForPlan(config.Signing, request.TargetOS, assetsOut)}, Output: input + ".signed", Cache: CacheNever, Claims: ResourceClaims{CPU: 1, MemoryMB: 256, Exclusive: "sign"}, EstimateMS: 1000, Artifact: identity})
 			signed = append(signed, signedKey)
-			finalOutputs[signedKey] = signedPublicationPath(finalOutputs[artifact], request.TargetOS)
+			finalOutputs[signedKey] = finalOutputs[artifact]
 		}
 		packageRoots = signed
 		afterSign := hookNode(manifest.AfterSign, TargetScope, packageScopeOutput(nodeOutputs(plan, signed)), signed)
@@ -1248,14 +1248,12 @@ func max(a, b int) int {
 	return b
 }
 
-// Keep Windows extensions intact so Explorer and package installers recognise
-// published signed artifacts. Private staging paths retain their own identity.
-func signedPublicationPath(path, targetOS string) string {
-	if targetOS == "windows" {
-		extension := filepath.Ext(path)
-		return strings.TrimSuffix(path, extension) + ".signed" + extension
-	}
-	return path + ".signed"
+// adhocSignsBundle reports whether app assembly must ad-hoc sign the bundle.
+// Bundles that the signing stage will sign with an identity are signed there;
+// every other darwin bundle needs a sealed signature from assembly so that
+// notifications, keychain and TCC prompts see a coherent bundle.
+func adhocSignsBundle(targetOS string, signedByPipeline bool) bool {
+	return targetOS == "darwin" && !signedByPipeline
 }
 
 // goSourceExtensions includes the inputs recognized by go/build's fileListForExt,

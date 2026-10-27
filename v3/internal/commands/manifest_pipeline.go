@@ -32,6 +32,7 @@ import (
 	"github.com/wailsapp/wails/v3/internal/wake/pipeline"
 	"golang.org/x/mod/modfile"
 	"gopkg.in/yaml.v3"
+	"howett.net/plist"
 )
 
 type manifestRunOptions struct {
@@ -491,10 +492,27 @@ func (h *manifestHandler) Identity(ctx context.Context, node pipeline.Node) (str
 			}
 			tools = append(tools, path)
 		}
+	case pipeline.AssembleApplication:
+		// Ad-hoc signing is only performed on darwin hosts, so codesign joins the
+		// identity there; other hosts skip it and never reuse a darwin signature.
+		spec, err := manifestNodeSpec[pipeline.PackageSpec](node)
+		if err != nil {
+			return "", err
+		}
+		if shouldAdhocSignBundle(manifestHostOS, spec) {
+			if path, err := exec.LookPath("codesign"); err == nil {
+				tools = append(tools, path)
+			}
+		}
 	case pipeline.PackageArtifact:
 		spec, err := manifestNodeSpec[pipeline.PackageSpec](node)
 		if err != nil {
 			return "", err
+		}
+		if shouldAdhocSignBundle(manifestHostOS, spec) {
+			if path, err := exec.LookPath("codesign"); err == nil {
+				tools = append(tools, path)
+			}
 		}
 		name := map[string]string{"nsis": "makensis", "msix": "MakeAppx.exe"}[spec.Format]
 		if name != "" {
@@ -1687,11 +1705,39 @@ func manifestSigningPlatform(signing manifest.Signing, targetOS string) *manifes
 }
 
 func replacePathTransactional(staged, destination string) error {
+	// Staging roots come from os.MkdirTemp, which creates them 0700. Published
+	// bundles and output directories must be readable by other users, so
+	// normalise every staged directory to 0755 before it becomes visible.
+	if err := normalizeStagedDirectories(staged); err != nil {
+		return err
+	}
 	return replacePathTransactionalWithOperations(staged, destination, replacePathOperations{
 		mkdirTemp: os.MkdirTemp,
 		lstat:     os.Lstat,
 		rename:    os.Rename,
 		removeAll: os.RemoveAll,
+	})
+}
+
+// normalizeStagedDirectories sets every directory under root (including root)
+// to 0755. File modes are left exactly as produced, so executables keep their
+// permissions. Symbolic links are not followed.
+func normalizeStagedDirectories(root string) error {
+	return filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !entry.IsDir() {
+			return nil
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if info.Mode().Perm() == 0o755 {
+			return nil
+		}
+		return os.Chmod(path, 0o755)
 	})
 }
 
@@ -2052,7 +2098,7 @@ func (h *manifestHandler) packageArtifact(ctx context.Context, s pipeline.Packag
 		if s.TargetOS == "ios" {
 			return h.packageIOS(ctx, s, false)
 		}
-		return h.packageApp(s)
+		return h.packageApp(ctx, s)
 	case "dmg":
 		options, err := h.dmgOptions(s)
 		if err != nil {
@@ -2212,7 +2258,7 @@ func (h *manifestHandler) dmgOptionsWithRead(s pipeline.PackageSpec, readFile fu
 	}, nil
 }
 
-func (h *manifestHandler) packageApp(s pipeline.PackageSpec) (pipeline.RunResult, error) {
+func (h *manifestHandler) packageApp(ctx context.Context, s pipeline.PackageSpec) (pipeline.RunResult, error) {
 	output := filepath.Join(h.root, filepath.FromSlash(s.Output))
 	if err := os.MkdirAll(filepath.Dir(output), 0o755); err != nil {
 		return pipeline.RunResult{}, err
@@ -2236,6 +2282,13 @@ func (h *manifestHandler) packageApp(s pipeline.PackageSpec) (pipeline.RunResult
 	assets := filepath.Join(h.root, s.Assets, "darwin")
 	for _, name := range []string{"Info.plist", "icons.icns", "Assets.car"} {
 		source := filepath.Join(assets, name)
+		if name == "Info.plist" && s.Development && !h.userOwnsDarwinInfoPlist() {
+			// The generated development plist differs from the release plist only
+			// by its local-networking ATS exception, so prefer it when present.
+			if _, err := os.Stat(filepath.Join(assets, "Info.dev.plist")); err == nil {
+				source = filepath.Join(assets, "Info.dev.plist")
+			}
+		}
 		if _, err := os.Stat(source); err == nil {
 			dest := filepath.Join(staged, "Contents", name)
 			if name == "icons.icns" || name == "Assets.car" {
@@ -2244,6 +2297,11 @@ func (h *manifestHandler) packageApp(s pipeline.PackageSpec) (pipeline.RunResult
 			if err := copyManifestPath(source, dest); err != nil {
 				return pipeline.RunResult{}, err
 			}
+		}
+	}
+	if s.Development {
+		if err := mergeDarwinDevelopmentInfoPlist(filepath.Join(staged, "Contents", "Info.plist")); err != nil {
+			return pipeline.RunResult{}, fmt.Errorf("development Info.plist: %w", err)
 		}
 	}
 	associationIcons, err := filepath.Glob(filepath.Join(assets, "association-*.icns"))
@@ -2255,7 +2313,58 @@ func (h *manifestHandler) packageApp(s pipeline.PackageSpec) (pipeline.RunResult
 			return pipeline.RunResult{}, err
 		}
 	}
+	if s.AdhocSign {
+		if manifestHostOS != "darwin" {
+			fmt.Fprintf(os.Stderr, "Skipping ad-hoc codesign (not available on %s); sign the .app on macOS before distribution\n", manifestHostOS)
+		} else if _, err := runManifestCommand(ctx, h.root, nil, "codesign", "--force", "--deep", "--sign", "-", staged); err != nil {
+			return pipeline.RunResult{}, fmt.Errorf("ad-hoc codesign %s: %w", s.Project.BinaryName+".app", err)
+		}
+	}
 	return pipeline.RunResult{}, replacePathTransactional(staged, output)
+}
+
+// shouldAdhocSignBundle reports whether this assembly step must ad-hoc sign the
+// bundle: the planner asked for it and the host can run codesign.
+func shouldAdhocSignBundle(hostOS string, s pipeline.PackageSpec) bool {
+	return s.AdhocSign && hostOS == "darwin"
+}
+
+// userOwnsDarwinInfoPlist reports whether the project supplies its own darwin
+// Info.plist, which then replaces the generated one before assembly.
+func (h *manifestHandler) userOwnsDarwinInfoPlist() bool {
+	return manifestPlatform(h.config.Targets, "darwin").InfoPlist != ""
+}
+
+// mergeDarwinDevelopmentInfoPlist adds the local-networking App Transport
+// Security exception that the development bundle needs to reach the dev server.
+// It is idempotent and leaves every other key untouched.
+func mergeDarwinDevelopmentInfoPlist(path string) error {
+	data, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	merged, err := darwinDevelopmentInfoPlist(data)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, merged, 0o644)
+}
+
+func darwinDevelopmentInfoPlist(data []byte) ([]byte, error) {
+	var info map[string]any
+	if _, err := plist.Unmarshal(data, &info); err != nil {
+		return nil, err
+	}
+	ats, _ := info["NSAppTransportSecurity"].(map[string]any)
+	if ats == nil {
+		ats = map[string]any{}
+	}
+	ats["NSAllowsLocalNetworking"] = true
+	info["NSAppTransportSecurity"] = ats
+	return plist.MarshalIndent(info, plist.XMLFormat, "\t")
 }
 
 func (h *manifestHandler) packageAppImage(ctx context.Context, s pipeline.PackageSpec) (pipeline.RunResult, error) {
