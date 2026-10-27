@@ -7,7 +7,12 @@ import (
 	"strconv"
 
 	"github.com/wailsapp/wails/v3/internal/flags"
+	"github.com/wailsapp/wails/v3/internal/term"
 )
+
+// defaultDevConfig is the legacy Taskfile -config default; it is only meaningful
+// when no wails.yaml is active.
+const defaultDevConfig = "./build/config.yml"
 
 const defaultVitePort = 9245
 const wailsVitePort = "WAILS_VITE_PORT"
@@ -23,7 +28,7 @@ type DevOptions struct {
 	Destination     string `name:"destination" description:"iOS destination: simulator (default) or device"`
 	flags.Common
 
-	Config   string `description:"The config file including path" default:"./build/config.yml"`
+	Config   string `description:"Legacy Taskfile projects: the config file including path (ignored when wails.yaml is active)" default:"./build/config.yml"`
 	VitePort int    `name:"port" description:"Specify the vite dev server port"`
 	Secure   bool   `name:"s" description:"Enable HTTPS"`
 	Tags     string `name:"tags" description:"Additional development build tags to pass to the Go compiler (comma-separated)"`
@@ -45,6 +50,9 @@ func Dev(options *DevOptions, args ...string) error {
 		return err
 	}
 	if active {
+		if options.Config != "" && options.Config != defaultDevConfig {
+			term.Warning(fmt.Sprintf("-config %s is ignored: the active wails.yaml defines the development session", options.Config))
+		}
 		return runManifestDev(options)
 	}
 	if options.applicationArgs != nil {

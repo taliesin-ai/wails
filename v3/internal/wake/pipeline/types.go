@@ -191,9 +191,12 @@ type Request struct {
 	Targets     []Target
 	Formats     []string
 	Development bool
-	ExtraTags   []string
-	GarbleArgs  []string
-	Obfuscated  bool
+	// DevBuild requests a development-flavoured build (wails3 build --dev) that is
+	// published to the normal output directory. It implies Development.
+	DevBuild   bool
+	ExtraTags  []string
+	GarbleArgs []string
+	Obfuscated bool
 	// Server plans a server-mode build (Go tag "server", no GUI, no platform
 	// assets, no packaging). Its binary is named <binary>-server[.exe].
 	Server      bool

@@ -120,11 +120,16 @@ func buildWithOperations(buildFlags *flags.Build, otherArgs []string, operations
 		if profile != "" && (len(targets) > 0 || len(formats) > 0 || userTags != "" || buildFlags.Obfuscated || buildFlags.GarbleArgs != "") {
 			return fmt.Errorf("named profile %q is a complete build request and does not accept artifact-affecting overrides", profile)
 		}
+		if buildFlags.Dev {
+			if err := validateDevBuildRequest(profile, targets, formats, buildFlags.Server); err != nil {
+				return err
+			}
+		}
 		verb := "build"
 		if len(formats) > 0 {
 			verb = "package"
 		}
-		options := manifestRunOptions{Verb: verb, Profile: profile, Targets: targets, Formats: formats, Force: buildFlags.Force, Obfuscated: buildFlags.Obfuscated, Server: buildFlags.Server, Tags: splitComma(buildFlags.Tags), GarbleArgs: garbleArgs}
+		options := manifestRunOptions{Verb: verb, Profile: profile, Targets: targets, Formats: formats, Force: buildFlags.Force, Obfuscated: buildFlags.Obfuscated, Server: buildFlags.Server, Tags: splitComma(buildFlags.Tags), GarbleArgs: garbleArgs, Development: buildFlags.Dev, DevBuild: buildFlags.Dev}
 		if buildFlags.Plan {
 			return operations.plan(options, buildFlags.JSON)
 		}
@@ -132,6 +137,9 @@ func buildWithOperations(buildFlags *flags.Build, otherArgs []string, operations
 	}
 	if buildFlags.Tags != "" {
 		otherArgs = append(otherArgs, "EXTRA_TAGS="+buildFlags.Tags)
+	}
+	if buildFlags.Dev {
+		otherArgs = append(otherArgs, "DEV=true")
 	}
 	if buildFlags.Obfuscated {
 		otherArgs = append(otherArgs, "OBFUSCATED=true")
@@ -198,6 +206,27 @@ func signWithOperations(options *flags.SignWrapper, otherArgs []string, operatio
 		return operations.run(manifestRunOptions{Verb: "sign", Profile: options.Profile, Targets: targets, Formats: splitComma(options.Formats), Tags: envTags()})
 	}
 	return operations.task("sign", otherArgs)
+}
+
+// validateDevBuildRequest rejects combinations that a development publication
+// cannot honour. Obfuscation is supported; packages, profiles, server binaries
+// and mobile targets are not part of the development build contract.
+func validateDevBuildRequest(profile string, targets []pipeline.Target, formats []string, server bool) error {
+	if profile != "" {
+		return fmt.Errorf("--dev builds a development binary and cannot be combined with profile %q", profile)
+	}
+	if len(formats) > 0 {
+		return fmt.Errorf("--dev cannot be combined with --formats; development builds publish the plain binary or app bundle")
+	}
+	if server {
+		return fmt.Errorf("--dev cannot be combined with --server")
+	}
+	for _, target := range targets {
+		if target.OS == "ios" || target.OS == "android" {
+			return fmt.Errorf("--dev supports desktop targets only; use wails3 dev for %s", target.OS)
+		}
+	}
+	return nil
 }
 
 func manifestProfile(flagValue string, args []string) (string, error) {

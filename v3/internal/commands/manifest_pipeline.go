@@ -43,6 +43,7 @@ type manifestRunOptions struct {
 	Formats                             []string
 	Environment                         []string
 	Development, Force, Obfuscated      bool
+	DevBuild                            bool
 	Server                              bool
 	Tags                                []string
 	GarbleArgs                          []string
@@ -201,7 +202,7 @@ func resolveManifestPlanWithOperations(options manifestRunOptions, operations ma
 	if loaded.Config.Root != "" {
 		root = loaded.Config.Root
 	}
-	plan, err := operations.plan(loaded.Config, pipeline.Request{Verb: options.Verb, TargetOS: options.TargetOS, TargetArch: options.TargetArch, Targets: options.Targets, Formats: options.Formats, Development: options.Development, Server: options.Server, ExtraTags: options.Tags, GarbleArgs: options.GarbleArgs, Obfuscated: options.Obfuscated})
+	plan, err := operations.plan(loaded.Config, pipeline.Request{Verb: options.Verb, TargetOS: options.TargetOS, TargetArch: options.TargetArch, Targets: options.Targets, Formats: options.Formats, Development: options.Development, DevBuild: options.DevBuild, Server: options.Server, ExtraTags: options.Tags, GarbleArgs: options.GarbleArgs, Obfuscated: options.Obfuscated})
 	if err != nil {
 		return "", nil, pipeline.Plan{}, err
 	}
