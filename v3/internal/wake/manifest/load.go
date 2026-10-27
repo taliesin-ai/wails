@@ -139,6 +139,7 @@ func defaults(project Project) Document {
 		Windows: defaultPlatform("amd64", "arm64"), Darwin: defaultPlatform("amd64", "arm64"),
 		Linux: defaultPlatform("amd64", "arm64"), IOS: defaultPlatform("arm64"), Android: defaultPlatform("arm64"),
 	}
+	targets.Darwin.MinimumVersion = "12.0"
 	targets.IOS.MinimumVersion = "15.0"
 	targets.Android.MinimumSDK = 21
 	packages := Packages{

@@ -46,6 +46,7 @@ windows:
   icon: build/windows/icon.ico
   manifest: build/windows/wails.exe.manifest
 darwin:
+  minimum_version: "12.0"
   icon: build/darwin/icons.icns
   info_plist: build/darwin/Info.plist
 targets:

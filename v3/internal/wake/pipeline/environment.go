@@ -436,7 +436,7 @@ func validateCompileEnvironment(spec CompileSpec, host HostCapabilities) error {
 	operation := "compiling " + spec.TargetOS + "/" + spec.TargetArch
 	if spec.Toolchain == "docker" {
 		if host.containerImagesKnown && host.crossContainerImage() == "" {
-			return hostConfigurationField("toolchain", fmt.Errorf("%s with Docker or Podman requires container image %q", operation, CrossContainerImage))
+			return hostConfigurationField("toolchain", fmt.Errorf("%s with Docker or Podman requires container image %q; run: wails3 setup docker", operation, CrossContainerImage))
 		}
 		return nil
 	}
@@ -493,14 +493,11 @@ func resolveToolchain(spec CompileSpec, host HostCapabilities) (string, error) {
 		if nativeToolchainSupports(spec, host) {
 			return "native", nil
 		}
-		if spec.TargetOS == "windows" && host.hasTool("zig") {
-			return "zig", nil
-		}
 		if dockerToolchainSupports(spec, host) && host.containerRuntime != "" {
 			return "docker", nil
 		}
 		if spec.TargetOS == "linux" {
-			return "", hostConfigurationField("toolchain", fmt.Errorf("target %s on %s/%s requires the wails-cross image with Docker or Podman; plain Zig does not provide the target Linux desktop sysroot", target, host.os, host.arch))
+			return "", hostConfigurationField("toolchain", fmt.Errorf("target %s on %s/%s requires the wails-cross image with Docker or Podman; plain Zig does not provide the target Linux desktop sysroot; run: wails3 setup docker", target, host.os, host.arch))
 		}
 		return "", hostConfigurationField("toolchain", fmt.Errorf("target %s on %s/%s requires zig, Docker, or Podman; no compatible toolchain is available", target, host.os, host.arch))
 	}
@@ -531,9 +528,9 @@ func nativeToolchainSupports(spec CompileSpec, host HostCapabilities) bool {
 	case "ios":
 		return host.os == "darwin"
 	case "windows":
-		// Wails' Windows runtime does not require CGo. Go can build both
-		// supported Windows architectures without an external cross compiler.
-		return host.os == "windows"
+		// Wails' Windows runtime is pure Go (built with CGO_ENABLED=0 off
+		// Windows), so Go alone builds both architectures from any host.
+		return true
 	default:
 		return host.os == spec.TargetOS && (host.arch == spec.TargetArch || spec.TargetOS == "darwin")
 	}

@@ -192,6 +192,13 @@ func main() {
 		return commands.EntitlementsSetup(&setupEntitlementsFlags)
 	})
 
+	setupDocker := setup.NewSubCommand("docker", "Pull or build the wails-cross image for cross-compilation")
+	var setupDockerFlags flags.SetupDocker
+	setupDocker.AddFlags(&setupDockerFlags)
+	setupDocker.Action(func() error {
+		return commands.SetupDocker(&setupDockerFlags)
+	})
+
 	// Sign command (wrapper that calls platform-specific tasks)
 	signDescription := "Sign the project"
 	if features.WakeEnabled() {
