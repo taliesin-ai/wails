@@ -61,6 +61,19 @@ func TestStockTemplatesMigrateWithoutBlockers(t *testing.T) {
 			assert.Equal(t, expected.typescript, loaded.Config.Frontend.Bindings.TypeScript, "typescript")
 			assert.Equal(t, expected.interfaces, loaded.Config.Frontend.Bindings.Interfaces, "interfaces")
 			assert.Equal(t, expected.timeType, loaded.Config.Frontend.Bindings.TimeType, "time_type")
+			assert.True(t, loaded.Config.Build.Tidy, "stock go:mod:tidy must carry over as build.tidy")
+			// Stock Linux packaging creates four formats, but the manifest has no
+			// YAML setting for default Linux formats, so the gap is reported.
+			assert.Contains(t, migrationDiagnosticCodes(report), "package-formats-unrepresentable")
+			assert.Contains(t, migrationDiagnosticCodes(report), "darwin-dmg-default")
+			buildServer := 0
+			for _, diagnostic := range report.Diagnostics {
+				if diagnostic.Code == "stock-task-replacement" && strings.Contains(diagnostic.Message, "build:server") {
+					buildServer++
+					assert.Contains(t, diagnostic.Message, "`wails3 build --server`")
+				}
+			}
+			assert.Equal(t, 1, buildServer, "each replacement is reported once per project")
 			_, err = pipeline.PlanBuild(loaded.Config, pipeline.Request{Verb: "build", TargetOS: "linux", TargetArch: "amd64"})
 			require.NoError(t, err)
 		})
@@ -83,6 +96,17 @@ func TestStockDarwinDynamicSelectionsStayReachableWithoutIssues(t *testing.T) {
 	assert.True(t, reachability.contains(platform, "build"))
 	assert.True(t, reachability.contains(platform, "build:native"), "the stock if/else selection must keep both alternatives reachable")
 	assert.True(t, reachability.contains(platform, "build:docker"), "the stock if/else selection must keep both alternatives reachable")
+}
+
+func TestLegacyVitePortTranslatesToDevPort(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, "Taskfile.yml"), []byte("version: '3'\nvars:\n  VITE_PORT: '9333'\ntasks: {}\n"), 0o644))
+
+	report, doc, err := analyseMigration(root)
+	require.NoError(t, err)
+	assert.True(t, report.Complete)
+	assert.Equal(t, 9333, doc.Dev.Port)
+	assert.Contains(t, migrationDiagnosticCodes(report), "translated-dev-port")
 }
 
 func TestCustomTaskDynamicReferenceStillWarns(t *testing.T) {

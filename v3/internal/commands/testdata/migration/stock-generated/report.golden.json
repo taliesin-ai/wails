@@ -47,5 +47,34 @@
       "role": "windows",
       "classification": "historical-default"
     }
+  ],
+  "diagnostics": [
+    {
+      "severity": "info",
+      "code": "translated-tidy",
+      "file": "build/Taskfile.yml",
+      "task": "go:mod:tidy",
+      "message": "stock go:mod:tidy ran before bindings and compilation; translated to build.tidy"
+    },
+    {
+      "severity": "info",
+      "code": "darwin-dmg-default",
+      "file": "build/darwin/Taskfile.yml",
+      "task": "package",
+      "message": "stock package creates only the .app bundle; wails3 package also emits a DMG by default"
+    },
+    {
+      "severity": "info",
+      "code": "package-formats-unrepresentable",
+      "file": "build/linux/Taskfile.yml",
+      "task": "package",
+      "message": "stock package builds appimage, deb, rpm and archlinux; the manifest has no setting for default Linux formats, so only appimage is configured"
+    },
+    {
+      "severity": "info",
+      "code": "stock-task-replacement",
+      "file": "build/Taskfile.yml",
+      "message": "update:build-assets is not needed: build assets are generated on every build; customise via wails.yaml"
+    }
   ]
 }

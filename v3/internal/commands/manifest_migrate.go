@@ -113,7 +113,12 @@ func migrateWithOperations(options *MigrateOptions, operations migrationCommandO
 		status = "needs manual changes"
 	}
 	fmt.Printf("Migration analysis: %s (%d source files, %d diagnostics)\n", status, len(report.Sources), len(report.Diagnostics))
+	var replacements []MigrationDiagnostic
 	for _, d := range report.Diagnostics {
+		if d.Code == "stock-task-replacement" {
+			replacements = append(replacements, d)
+			continue
+		}
 		location := d.File
 		if d.Task != "" {
 			location += " [" + d.Task + "]"
@@ -126,6 +131,12 @@ func migrateWithOperations(options *MigrateOptions, operations migrationCommandO
 		fmt.Printf("Left existing inactive %s unchanged; analysis only\n", relativeDraft)
 	} else {
 		fmt.Printf("Wrote inactive %s\n", relativeDraft)
+	}
+	if len(replacements) > 0 {
+		fmt.Println("Taskfile tasks replaced by wails3 commands:")
+		for _, d := range replacements {
+			fmt.Printf("  %s\n", d.Message)
+		}
 	}
 	return nil
 }
@@ -580,6 +591,11 @@ func analyseMigration(root string) (MigrationReport, manifest.Document, error) {
 	interfaceBindings := false
 	bindingTimeType := ""
 	bindingsCommandSeen := false
+	buildTidy := false
+	// Replacement actions are collected per distinct action text so each one
+	// is reported once per project, naming every stock task it covers.
+	replacementTasks := map[string][]string{}
+	replacementFiles := map[string]string{}
 	migratedHooks := make(map[manifest.HookPhase]manifest.Hook)
 	for _, path := range files {
 		rel, err := filepath.Rel(root, path)
@@ -716,6 +732,27 @@ func analyseMigration(root string) (MigrationReport, manifest.Document, error) {
 			report.Complete = false
 			report.Diagnostics = append(report.Diagnostics, MigrationDiagnostic{Severity: "warning", Code: "missing-generated-tasks", File: rel, Message: fmt.Sprintf("%d generated tasks are missing; review this Taskfile as customised", len(canonical.missing))})
 		}
+		stockTask := func(name string) bool {
+			return knownStock || matchesStockTask(role, name, tf.Tasks[name])
+		}
+		for _, name := range taskNames {
+			if action, ok := stockTaskReplacement(role, name); ok {
+				if !containsString(replacementTasks[action], name) {
+					replacementTasks[action] = append(replacementTasks[action], name)
+				}
+				replacementFiles[action] = first(replacementFiles[action], rel)
+			}
+		}
+		if role == "common" && reachability.contains(path, "go:mod:tidy") && stockTask("go:mod:tidy") {
+			buildTidy = true
+			report.Diagnostics = append(report.Diagnostics, MigrationDiagnostic{Severity: "info", Code: "translated-tidy", File: rel, Task: "go:mod:tidy", Message: "stock go:mod:tidy ran before bindings and compilation; translated to build.tidy"})
+		}
+		if role == "linux" && reachability.contains(path, "package") && stockTask("package") {
+			report.Diagnostics = append(report.Diagnostics, MigrationDiagnostic{Severity: "info", Code: "package-formats-unrepresentable", File: rel, Task: "package", Message: "stock package builds appimage, deb, rpm and archlinux; the manifest has no setting for default Linux formats, so only appimage is configured"})
+		}
+		if role == "darwin" && reachability.contains(path, "package") && stockTask("package") {
+			report.Diagnostics = append(report.Diagnostics, MigrationDiagnostic{Severity: "info", Code: "darwin-dmg-default", File: rel, Task: "package", Message: "stock package creates only the .app bundle; wails3 package also emits a DMG by default"})
+		}
 		sort.Strings(classification.ModifiedTasks)
 		sort.Strings(classification.MissingTasks)
 		report.Taskfiles = append(report.Taskfiles, classification)
@@ -742,15 +779,25 @@ func analyseMigration(root string) (MigrationReport, manifest.Document, error) {
 					if convErr != nil || port < 1 || port > 65535 {
 						devPort = 0
 						report.Diagnostics = append(report.Diagnostics, MigrationDiagnostic{Severity: "info", Code: "invalid-port", File: rel, Message: "VITE_PORT=" + value.Static + " is not a valid port and was not migrated"})
-					} else if port != defaultVitePort {
-						report.Complete = false
-						report.Diagnostics = append(report.Diagnostics, MigrationDiagnostic{Severity: "warning", Code: "unsupported-dev-port", File: rel, Message: "VITE_PORT is not representable in YAML; use wails3 dev --port explicitly and remove the legacy override before activation"})
 					} else {
 						devPort = port
+						if port != defaultVitePort {
+							report.Diagnostics = append(report.Diagnostics, MigrationDiagnostic{Severity: "info", Code: "translated-dev-port", File: rel, Message: fmt.Sprintf("translated VITE_PORT=%d to dev.port", port)})
+						}
 					}
 				}
 			}
 		}
+	}
+	actions := make([]string, 0, len(replacementTasks))
+	for action := range replacementTasks {
+		actions = append(actions, action)
+	}
+	sort.Strings(actions)
+	for _, action := range actions {
+		names := replacementTasks[action]
+		sort.Strings(names)
+		report.Diagnostics = append(report.Diagnostics, MigrationDiagnostic{Severity: "info", Code: "stock-task-replacement", File: replacementFiles[action], Message: strings.Join(names, ", ") + " " + action})
 	}
 	project := manifest.Project{Name: filepath.Base(root), ProductName: filepath.Base(root), Identifier: "com.wails." + normaliseName(filepath.Base(root)), Version: "0.1.0"}
 	project.BinaryName = binaryName
@@ -758,6 +805,7 @@ func analyseMigration(root string) (MigrationReport, manifest.Document, error) {
 		project.Name = binaryName
 	}
 	doc := manifest.NewDocument(project)
+	doc.Build.Tidy = buildTidy
 	doc.Hooks = migratedHooks
 	if buildOutput != "" {
 		doc.Build.OutputDirectory = buildOutput
@@ -1223,6 +1271,72 @@ var knownStockTaskfiles = map[string]map[string]bool{
 		"c36c2687b8ef10117ef7ea2218d26b64cea9d5ef1a8cdca25e5c3cf30964be2e",
 		"1e17b34e61333f3037986d27dcec870fe64432c72b22e70dad7603fbde0b4ba3",
 	),
+}
+
+// stockTaskReplacement describes the wails3 command that replaces a stock
+// auxiliary task, which has no automatic YAML equivalent. Build-path tasks such
+// as platform build:docker are not listed: they are migrated, not replaced.
+func stockTaskReplacement(role, name string) (string, bool) {
+	const signing = "is replaced by configuring signing in wails.yaml (`wails3 setup signing`) and running `wails3 sign`"
+	switch role {
+	case "root", "common":
+		switch name {
+		case "build:server":
+			return "is replaced by `wails3 build --server`", true
+		case "run:server":
+			return "is replaced by `wails3 run --server`", true
+		case "build:docker":
+			return "is replaced by `wails3 server docker`", true
+		case "run:docker":
+			return "is replaced by `wails3 server docker -run`", true
+		case "setup:docker":
+			return "is replaced by `wails3 setup docker`", true
+		case "frontend:vendor:puppertino":
+			return "is replaced by `wails3 tool puppertino`", true
+		case "update:build-assets":
+			return "is not needed: build assets are generated on every build; customise via wails.yaml", true
+		case "ios:device:list":
+			return "is replaced by `wails3 ios devices`", true
+		}
+	case "ios":
+		switch {
+		case name == "install:deps":
+			return "is replaced by `wails3 doctor`", true
+		case strings.HasPrefix(name, "logs"):
+			return "is replaced by `wails3 ios logs`", true
+		case name == "xcode":
+			return "is replaced by `wails3 ios xcode`", true
+		}
+	case "android":
+		switch {
+		case name == "install:deps":
+			return "is replaced by `wails3 doctor`", true
+		case name == "studio":
+			return "is replaced by `wails3 android studio`", true
+		case strings.HasPrefix(name, "logs"):
+			return "is replaced by `wails3 android logs`", true
+		case name == "device:list":
+			return "is replaced by `wails3 android devices`", true
+		}
+	case "windows":
+		switch name {
+		case "install:msix:tools":
+			return "is replaced by `wails3 tool msix-install-tools`", true
+		case "sign", "sign:installer":
+			return signing, true
+		}
+	case "darwin":
+		switch name {
+		case "sign", "sign:notarize":
+			return signing, true
+		}
+	case "linux":
+		switch name {
+		case "sign:deb", "sign:rpm", "sign:packages":
+			return signing, true
+		}
+	}
+	return "", false
 }
 
 func recognizedRootTask(name string, task *wakeast.Task) bool {
