@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"runtime"
 	"sort"
 	"strconv"
@@ -243,6 +244,10 @@ func printMigrationJSON(report MigrationReport) {
 type migrationTaskNode struct {
 	key, prefix, path, name string
 	task                    *wakeast.Task
+	// stock marks tasks that are shipped generated defaults. Their dynamic
+	// references are selections among other shipped tasks, so they are
+	// expanded rather than reported.
+	stock bool
 }
 
 type migrationReachability struct {
@@ -256,6 +261,9 @@ func (r migrationReachability) contains(path, task string) bool {
 
 func analyseTaskReachability(rootTask string, files []string) (migrationReachability, error) {
 	nodes := map[string][]migrationTaskNode{}
+	// Stock roles are classified relative to the project root, which is the
+	// directory containing the root Taskfile.
+	projectRoot := filepath.Dir(filepath.Clean(rootTask))
 	loadedPaths := map[string]bool{}
 	visited := map[string]bool{}
 	ancestors := map[string]bool{}
@@ -279,9 +287,12 @@ func analyseTaskReachability(rootTask string, files []string) (migrationReachabi
 		if err != nil {
 			return err
 		}
+		role := migrationTaskfileRole(projectRoot, path)
+		stockFile := knownStockTaskfile(path, role)
 		for name, task := range tf.Tasks {
 			key := prefix + name
-			nodes[key] = append(nodes[key], migrationTaskNode{key: key, prefix: prefix, path: path, name: name, task: task})
+			stock := stockFile || matchesStockTask(role, name, task)
+			nodes[key] = append(nodes[key], migrationTaskNode{key: key, prefix: prefix, path: path, name: name, task: task, stock: stock})
 		}
 		includeNames := make([]string, 0, len(tf.Includes))
 		for name := range tf.Includes {
@@ -370,6 +381,18 @@ func analyseTaskReachability(rootTask string, files []string) (migrationReachabi
 						}
 						continue
 					}
+					if node.stock {
+						// Generated defaults select among their own shipped
+						// variants (for example by PACKAGE_MANAGER or OS), so
+						// every candidate they could select stays reachable.
+						pattern := dynamicTaskReferencePattern(node.prefix, reference)
+						for candidate := range nodes {
+							if pattern.MatchString(candidate) {
+								queue = append(queue, candidate)
+							}
+						}
+						continue
+					}
 					addIssue(node, "dynamic-task-reference", "reachable task selects another task dynamically and cannot be proven equivalent")
 					continue
 				}
@@ -419,6 +442,85 @@ func resolveMigrationInclude(taskfile string, include *wakeast.Include) (string,
 		}
 	}
 	return "", fs.ErrNotExist
+}
+
+// migrationTaskfileRole classifies path by its location under projectRoot.
+func migrationTaskfileRole(projectRoot, path string) string {
+	rel, err := filepath.Rel(projectRoot, path)
+	if err != nil {
+		return "unknown"
+	}
+	return taskfileRole(filepath.ToSlash(rel))
+}
+
+// knownStockTaskfile reports whether the file at path is a shipped generated
+// Taskfile for role. Git commonly checks out generated Taskfiles as CRLF, so
+// the LF-normalised form is compared as well as the raw digest.
+func knownStockTaskfile(path, role string) bool {
+	known := knownStockTaskfiles[role]
+	if len(known) == 0 {
+		return false
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	sum := blake3.Sum256(data)
+	if known[hex.EncodeToString(sum[:])] {
+		return true
+	}
+	normalised := blake3.Sum256(bytes.ReplaceAll(data, []byte("\r\n"), []byte("\n")))
+	return known[hex.EncodeToString(normalised[:])]
+}
+
+// matchesStockTask reports whether task is identical to the same-named task in
+// one of the stock variants for role.
+func matchesStockTask(role, name string, task *wakeast.Task) bool {
+	for _, variant := range stockTaskVariants(role) {
+		if expected, ok := variant[name]; ok && reflect.DeepEqual(task, expected) {
+			return true
+		}
+	}
+	return false
+}
+
+var (
+	templateExpressionPattern = regexp.MustCompile(`\{\{.*?\}\}`)
+	templateControlPattern    = regexp.MustCompile(`\{\{\s*(?:if\s.*?|else|end)\s*\}\}`)
+)
+
+// dynamicTaskReferencePattern turns a templated task reference into a pattern
+// matching every task key it could resolve to, either directly or below prefix.
+// Each {{else}} separates an alternative, so a branch selects one of its
+// alternatives; every other template expression is a wildcard.
+func dynamicTaskReferencePattern(prefix, reference string) *regexp.Regexp {
+	const separator = "\x00"
+	marked := templateControlPattern.ReplaceAllStringFunc(reference, func(control string) string {
+		if strings.Trim(control, "{} \t\r\n") == "else" {
+			return separator
+		}
+		return ""
+	})
+	alternatives := make([]string, 0, 2)
+	for _, alternative := range strings.Split(marked, separator) {
+		var body strings.Builder
+		last := 0
+		for _, location := range templateExpressionPattern.FindAllStringIndex(alternative, -1) {
+			body.WriteString(regexp.QuoteMeta(alternative[last:location[0]]))
+			body.WriteString(".*?")
+			last = location[1]
+		}
+		body.WriteString(regexp.QuoteMeta(alternative[last:]))
+		alternatives = append(alternatives, body.String())
+	}
+	pattern := "^"
+	if prefix != "" {
+		pattern += "(?:" + regexp.QuoteMeta(prefix) + ")?"
+	}
+	pattern += "(?:" + strings.Join(alternatives, "|") + ")$"
+	// Every literal part is quoted and the wildcard is fixed, so the pattern
+	// is always valid.
+	return regexp.MustCompile(pattern)
 }
 
 func migrationTaskReferences(task *wakeast.Task) []string {
@@ -476,6 +578,8 @@ func analyseMigration(root string) (MigrationReport, manifest.Document, error) {
 	devPort := 0
 	typescriptBindings := false
 	interfaceBindings := false
+	bindingTimeType := ""
+	bindingsCommandSeen := false
 	migratedHooks := make(map[manifest.HookPhase]manifest.Hook)
 	for _, path := range files {
 		rel, err := filepath.Rel(root, path)
@@ -553,6 +657,10 @@ func analyseMigration(root string) (MigrationReport, manifest.Document, error) {
 			typescript, interfaces := legacyBindingOptions(tf.Tasks[name])
 			typescriptBindings = typescriptBindings || typescript
 			interfaceBindings = interfaceBindings || interfaces
+			if value := legacyBindingTimeType(tf.Tasks[name]); value != "" {
+				bindingTimeType = value
+			}
+			bindingsCommandSeen = bindingsCommandSeen || legacyGeneratesBindings(tf.Tasks[name])
 			reachable := reachability.contains(path, name)
 			if phase, script, ok := legacyLifecycleScript(root, filepath.Dir(path), name, tf.Tasks[name]); ok {
 				severity := "info"
@@ -659,11 +767,19 @@ func analyseMigration(root string) (MigrationReport, manifest.Document, error) {
 	}
 	doc.Frontend.Bindings.TypeScript = typescriptBindings
 	doc.Frontend.Bindings.Interfaces = interfaceBindings
+	if bindingTimeType != "" {
+		doc.Frontend.Bindings.TimeType = bindingTimeType
+	}
 	if err := applyLegacyBuildConfiguration(root, &report, &doc); err != nil {
 		return report, manifest.Document{}, err
 	}
 	if err := applyLegacyFrontendConfiguration(root, packageManager, &report, &doc); err != nil {
 		return report, manifest.Document{}, err
+	}
+	if bindingsCommandSeen {
+		// A tsconfig.json does not prove TypeScript bindings; the legacy
+		// generate bindings command, which passes -ts only for TypeScript, does.
+		doc.Frontend.Bindings.TypeScript = typescriptBindings
 	}
 	if err := applyConventionalLegacyAssets(root, &report, &doc); err != nil {
 		return report, manifest.Document{}, err
@@ -687,12 +803,53 @@ func legacyBindingOptions(task *wakeast.Task) (typescript, interfaces bool) {
 			switch name {
 			case "-ts", "--ts", "-typescript", "--typescript":
 				typescript = true
-			case "-interfaces", "--interfaces":
+			case "-interfaces", "--interfaces", "-i", "--i":
 				interfaces = true
 			}
 		}
 	}
 	return typescript, interfaces
+}
+
+// legacyGeneratesBindings reports whether task runs the generate bindings command.
+func legacyGeneratesBindings(task *wakeast.Task) bool {
+	if task == nil {
+		return false
+	}
+	for _, command := range task.Cmds {
+		if command != nil && strings.Contains(command.Cmd, "generate bindings") {
+			return true
+		}
+	}
+	return false
+}
+
+// legacyBindingTimeType returns the -time-type value passed to generate
+// bindings, or "" when the command does not set one.
+func legacyBindingTimeType(task *wakeast.Task) string {
+	if task == nil {
+		return ""
+	}
+	for _, command := range task.Cmds {
+		if command == nil || !strings.Contains(command.Cmd, "generate bindings") {
+			continue
+		}
+		fields := strings.Fields(command.Cmd)
+		for i, argument := range fields {
+			name, value, hasValue := strings.Cut(argument, "=")
+			if name != "-time-type" && name != "--time-type" {
+				continue
+			}
+			if !hasValue && i+1 < len(fields) {
+				value = fields[i+1]
+			}
+			// Stock commands place a Task template directly after the value, as
+			// in -time-type=Date{{if ...}}, so keep only the literal value.
+			value, _, _ = strings.Cut(value, "{{")
+			return value
+		}
+	}
+	return ""
 }
 
 func normalizeLegacyAppName(value string) string {
