@@ -349,10 +349,11 @@ func TestHostResolutionValidatesFormatSpecificSigningRequirements(t *testing.T) 
 	assert.ErrorContains(t, err, "PGP key identifier")
 
 	config.Signing.Linux.Certificate = "release@example.com"
+	// nfpm signs deb and rpm natively, so no external signing tool is required.
 	_, err = PlanBuildForHost(config, request, testHost("linux", "amd64"))
-	assert.ErrorContains(t, err, `requires tool "dpkg-sig"`)
-	_, err = PlanBuildForHost(config, request, testHost("linux", "amd64", "dpkg-sig"))
 	require.NoError(t, err)
+	_, err = PlanBuildForHost(config, Request{Verb: "sign", TargetOS: "linux", TargetArch: "amd64", Formats: []string{"archlinux"}}, testHost("linux", "amd64"))
+	assert.ErrorContains(t, err, `not supported for linux`)
 
 	config.Signing.Windows.Enabled = true
 	_, err = PlanBuildForHost(config, Request{Verb: "sign", TargetOS: "windows", TargetArch: "amd64", Formats: []string{"msix"}}, testHost("windows", "amd64", "MakeAppx.exe", "signtool.exe"))

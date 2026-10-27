@@ -342,6 +342,9 @@ func PlanBuildForHost(config manifest.Config, request Request, host HostCapabili
 			if spec.TargetOS == "android" && !host.androidSDK {
 				return Plan{}, annotateHostConfigurationError(config, node, fmt.Errorf("%s requires an Android SDK", operation))
 			}
+			if credential := spec.NativeSigning.Credential; credential != "" && !host.hasCredential(credential) {
+				return Plan{}, annotateHostConfigurationError(config, node, hostConfigurationField("credential", fmt.Errorf("%s signing credential %q is unavailable", operation, credential)))
+			}
 			if spec.Format == "apk" && spec.Release && spec.DebugSign {
 				if err := requireHostTools(host, operation, "zipalign", "apksigner"); err != nil {
 					return Plan{}, annotateHostConfigurationError(config, node, err)
@@ -618,10 +621,10 @@ func validateSigningHost(spec SignSpec, host HostCapabilities) error {
 			return hostConfigurationField("certificate", fmt.Errorf("linux signing requires signing.linux.certificate as the PGP key identifier"))
 		}
 		switch spec.Format {
-		case "deb":
-			return hostConfigurationField("sign", requireHostTools(host, operation, "dpkg-sig"))
-		case "rpm":
-			return hostConfigurationField("sign", requireHostTools(host, operation, "rpmsign"))
+		case "deb", "rpm":
+			// nfpm signs deb and rpm packages while writing them, so the sign stage
+			// needs no external signing tool; the package stage owns the credential.
+			return nil
 		default:
 			return hostConfigurationField("sign", fmt.Errorf("signing format %q is not supported for linux", spec.Format))
 		}

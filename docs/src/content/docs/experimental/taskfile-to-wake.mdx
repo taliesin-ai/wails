@@ -166,7 +166,7 @@ the Taskfile for those until the gap is closed.
 | `create:aur`, `generate:aur` | Format `archlinux` | The Taskfile name is `aur`. The wake format is `archlinux`. |
 | `generate:dotdesktop` | Automatic | Uses `linux.desktop_entry` when you supply one. |
 | `run` | `wails3 run` | |
-| `sign:deb`, `sign:rpm`, `sign:packages` | `linux.signing.certificate` (the PGP key identifier) with profile `sign: true` | Passwords come from the keychain set up by `wails3 setup signing`. The manifest has no DEB signing role field. See `SIGN_ROLE` below. |
+| `sign:deb`, `sign:rpm`, `sign:packages` | `linux.signing.certificate` (an ASCII-armoured PGP secret key file, relative to the project) with profile `sign: true` | nfpm signs deb and rpm packages while writing them, so wake needs neither `dpkg-sig` nor `rpmsign`. Set `linux.signing.credential` to the name of an environment variable that holds the passphrase; the value is never written to the configuration or to a command line. `linux.signing.identity` sets the deb role (see `SIGN_ROLE`). Archlinux packages are not signed by wake. |
 
 ### Windows (build/windows/Taskfile.yml)
 
@@ -263,7 +263,7 @@ setting should be saved in the project.
 | `SIGN_THUMBPRINT` | `windows.signing.thumbprint` | |
 | `TIMESTAMP_SERVER` | `windows.signing.timestamp_server` | |
 | `PGP_KEY` | `linux.signing.certificate` | The PGP key identifier. |
-| `SIGN_ROLE` | No manifest field | The manifest has no DEB signing role. Sign directly with `wails3 tool sign --role <origin, maint, archive or builder>`. |
+| `SIGN_ROLE` | `linux.signing.identity` | `origin`, `maint` or `archive` select the deb signature role. `builder` (dpkg-sig's default) and an empty value map to `origin`, because nfpm has no builder role. Legacy `wails3 tool sign --role` still accepts all four. |
 | `CODESIGN_IDENTITY` | `darwin.signing.identity` or `ios.signing.identity` | |
 | `ENTITLEMENTS_FILE` | `darwin.signing.entitlements` | |
 | `PROVISIONING_PROFILE` | `ios.signing.provisioning_profile` | |

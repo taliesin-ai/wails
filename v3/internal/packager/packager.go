@@ -32,6 +32,17 @@ const (
 
 // CreatePackageFromConfig loads a configuration file and creates a package
 func CreatePackageFromConfig(pkgType PackageType, configPath string, output string) error {
+	return createPackage(pkgType, configPath, output, "")
+}
+
+// CreateSignedPackageFromConfig creates a package that nfpm signs while it is
+// written. The passphrase is applied to the parsed configuration in memory; it
+// never comes from, or is written back to, the configuration file.
+func CreateSignedPackageFromConfig(pkgType PackageType, configPath string, output string, passphrase string) error {
+	return createPackage(pkgType, configPath, output, passphrase)
+}
+
+func createPackage(pkgType PackageType, configPath string, output string, passphrase string) error {
 	// Parse nfpm config
 	config, err := nfpm.ParseFile(configPath)
 	if err != nil {
@@ -42,6 +53,10 @@ func CreatePackageFromConfig(pkgType PackageType, configPath string, output stri
 	info, err := config.Get(string(pkgType))
 	if err != nil {
 		return fmt.Errorf("error getting packager info: %w", err)
+	}
+	if passphrase != "" {
+		info.Deb.Signature.KeyPassphrase = passphrase
+		info.RPM.Signature.KeyPassphrase = passphrase
 	}
 
 	// Get the packager

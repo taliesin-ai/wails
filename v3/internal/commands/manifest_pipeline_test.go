@@ -318,7 +318,7 @@ func TestTransactionalReplacementReportsRollbackFailure(t *testing.T) {
 
 func TestManifestSigningNeverMutatesItsInputArtifact(t *testing.T) {
 	root := t.TempDir()
-	input := filepath.Join(root, ".wails", "artifacts", "example.deb")
+	input := filepath.Join(root, ".wails", "artifacts", "example.exe")
 	require.NoError(t, os.MkdirAll(filepath.Dir(input), 0o755))
 	require.NoError(t, os.WriteFile(input, []byte("unsigned"), 0o644))
 	previousSign := manifestSign
@@ -328,8 +328,8 @@ func TestManifestSigningNeverMutatesItsInputArtifact(t *testing.T) {
 	t.Cleanup(func() { manifestSign = previousSign })
 
 	_, err := (&manifestHandler{root: root}).sign(t.Context(), pipeline.SignSpec{
-		TargetOS: "linux", Format: "deb", Input: ".wails/artifacts/example.deb",
-		Config: manifest.SigningPlatform{Enabled: true, Certificate: "release@example.com"},
+		TargetOS: "windows", Format: "exe", Input: ".wails/artifacts/example.exe",
+		Config: manifest.SigningPlatform{Enabled: true, Thumbprint: "ABC123"},
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "unsigned", string(readTestFile(t, input)))

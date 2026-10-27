@@ -287,6 +287,9 @@ type PackageSpec struct {
 	// AdhocSign asks app assembly to ad-hoc sign the bundle on darwin hosts.
 	// It is set only when the pipeline will not sign the bundle with an identity.
 	AdhocSign bool
+	// NativeSigning is set for deb and rpm packages that nfpm signs while the
+	// package is written. Its zero value means the package is not signed here.
+	NativeSigning manifest.SigningPlatform
 }
 type SignSpec struct {
 	TargetOS, TargetArch, Format, Input string

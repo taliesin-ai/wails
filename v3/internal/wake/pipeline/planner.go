@@ -725,7 +725,7 @@ func planTarget(config manifest.Config, request Request, multiTarget bool) (Plan
 		releaseSigned := releaseAPK && config.Signing.Android.Enabled
 		debugSign := releaseAPK && !releaseSigned && !request.sign
 		pkg := add(Node{Key: key, Kind: PackageArtifact, Label: "Package " + format, Scope: PackageScope, Dependencies: packageDeps,
-			Spec:   PackageSpec{Development: request.Development, TargetOS: request.TargetOS, TargetArch: request.TargetArch, Format: format, Binary: packageBinary, Binaries: append([]ComponentBinary(nil), componentBinaries...), Assets: assetsOut, Output: output, Profile: profileName, Destination: destination, MinimumVersion: targetSettings.MinimumVersion, Config: pkgConfig, Project: project, Capabilities: platformSettings.Capabilities, Associations: associations, Protocols: protocols, Release: releaseAPK, DebugSign: debugSign, AdhocSign: adhocSignsBundle(request.TargetOS, request.sign)},
+			Spec:   PackageSpec{Development: request.Development, TargetOS: request.TargetOS, TargetArch: request.TargetArch, Format: format, Binary: packageBinary, Binaries: append([]ComponentBinary(nil), componentBinaries...), Assets: assetsOut, Output: output, Profile: profileName, Destination: destination, MinimumVersion: targetSettings.MinimumVersion, Config: pkgConfig, Project: project, Capabilities: platformSettings.Capabilities, Associations: associations, Protocols: protocols, Release: releaseAPK, DebugSign: debugSign, AdhocSign: adhocSignsBundle(request.TargetOS, request.sign), NativeSigning: nativeLinuxSigning(request, config.Signing, format)},
 			Inputs: packageInputs(config.Root, request.TargetOS, format, pkgConfig), Output: output, Cache: packageCache, Claims: ResourceClaims{CPU: 1, MemoryMB: 1024, Exclusive: packageExclusive(request.TargetOS, format)}, EstimateMS: 1000, Artifact: ArtifactIdentity{Kind: ArtifactPackage, Target: Target{OS: request.TargetOS, Arch: request.TargetArch}, Format: format}})
 		packageRoots = append(packageRoots, pkg)
 		if releaseSigned {
@@ -1366,6 +1366,16 @@ func max(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// nativeLinuxSigning returns the Linux signing settings that nfpm applies while
+// it writes a deb or rpm package. Plans that do not sign, other platforms and
+// other formats (archlinux is not supported) get the zero value.
+func nativeLinuxSigning(request Request, signing manifest.Signing, format string) manifest.SigningPlatform {
+	if !request.sign || request.TargetOS != "linux" || !signing.Linux.Enabled || (format != "deb" && format != "rpm") {
+		return manifest.SigningPlatform{}
+	}
+	return signing.Linux
 }
 
 // adhocSignsBundle reports whether app assembly must ad-hoc sign the bundle.
