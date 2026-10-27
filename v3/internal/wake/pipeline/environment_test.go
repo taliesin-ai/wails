@@ -175,16 +175,33 @@ func TestHostResolutionChoosesTheFastestAvailableCompatibleToolchain(t *testing.
 	config := testConfig(t)
 	request := Request{Verb: "build", TargetOS: "windows", TargetArch: "amd64"}
 
+	// Windows targets are pure Go, so native Go is the fastest choice on every
+	// host, even when zig and Docker are also available.
 	plan, err := PlanBuildForHost(config, request, testHost("linux", "amd64", "zig", "docker"))
 	require.NoError(t, err)
-	assert.Equal(t, "zig", plan.Nodes["target:windows/amd64:compile"].Spec.(CompileSpec).Toolchain)
+	assert.Equal(t, "native", plan.Nodes["target:windows/amd64:compile"].Spec.(CompileSpec).Toolchain)
 
 	plan, err = PlanBuildForHost(config, request, testHost("linux", "amd64", "docker"))
 	require.NoError(t, err)
-	assert.Equal(t, "docker", plan.Nodes["target:windows/amd64:compile"].Spec.(CompileSpec).Toolchain)
+	assert.Equal(t, "native", plan.Nodes["target:windows/amd64:compile"].Spec.(CompileSpec).Toolchain)
 
-	_, err = PlanBuildForHost(config, request, NewHostCapabilities("linux", "amd64", []string{"go", "npm", "cc"}, nil))
-	assert.ErrorContains(t, err, "requires zig, Docker, or Podman")
+	plan, err = PlanBuildForHost(config, request, NewHostCapabilities("linux", "amd64", []string{"go", "npm", "cc"}, nil))
+	require.NoError(t, err)
+	assert.Equal(t, "native", plan.Nodes["target:windows/amd64:compile"].Spec.(CompileSpec).Toolchain)
+
+	plan, err = PlanBuildForHost(config, Request{Verb: "build", TargetOS: "windows", TargetArch: "amd64"}, NewHostCapabilities("darwin", "arm64", []string{"go", "npm"}, nil))
+	require.NoError(t, err)
+	assert.Equal(t, "native", plan.Nodes["target:windows/amd64:compile"].Spec.(CompileSpec).Toolchain)
+}
+
+func TestWindowsCrossCompileFromNonWindowsHostsUsesNativeGoWithoutCGO(t *testing.T) {
+	for _, host := range []string{"darwin", "linux"} {
+		plan, err := PlanBuildForHost(testConfig(t), Request{Verb: "build", TargetOS: "windows", TargetArch: "amd64"}, NewHostCapabilities(host, "arm64", []string{"go", "npm"}, nil))
+		require.NoError(t, err, host)
+		assert.Equal(t, "native", plan.Nodes["target:windows/amd64:compile"].Spec.(CompileSpec).Toolchain, host)
+	}
+	assert.True(t, nativeToolchainSupports(CompileSpec{TargetOS: "windows", TargetArch: "arm64"}, NewHostCapabilities("darwin", "arm64", nil, nil)))
+	assert.True(t, nativeToolchainSupports(CompileSpec{TargetOS: "windows", TargetArch: "amd64"}, NewHostCapabilities("linux", "amd64", nil, nil)))
 }
 
 func TestWindowsHostBuildsBothArchitecturesWithNativeGo(t *testing.T) {

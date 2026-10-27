@@ -395,7 +395,14 @@ func planTarget(config manifest.Config, request Request, multiTarget bool) (Plan
 	}
 	trimPath, strip := config.Build.TrimPath, config.Build.Strip
 	if request.Development {
-		linkerFlags, compilerFlags, garbleArgs = nil, nil, nil
+		linkerFlags, garbleArgs = nil, nil
+		// Development builds disable inlining (as the Taskfile dev builds did) so
+		// debuggers match the source. A per-target compiler_flags setting still
+		// wins; finite build policy never reaches the Dev Plan.
+		compilerFlags = []string{"all=-l"}
+		if targetSettings.CompilerFlags != nil {
+			compilerFlags = append([]string(nil), targetSettings.CompilerFlags...)
+		}
 		environment = nil
 		trimPath, strip = false, false
 	}

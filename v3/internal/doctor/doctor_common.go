@@ -146,7 +146,7 @@ func checkDocker(result map[string]string) {
 	// Check for the unified cross-compilation image
 	imageCheck, _ := exec.Command("docker", "image", "inspect", "wails-cross").Output()
 	if len(imageCheck) == 0 {
-		result["docker"] = "*" + version + " (wails-cross image not built - run: wails3 task setup:docker)"
+		result["docker"] = "*" + version + " (wails-cross image not built - run: wails3 setup docker)"
 	} else {
 		result["docker"] = "*" + version + " (cross-compilation ready)"
 	}

@@ -1033,6 +1033,11 @@ func (h *manifestHandler) compile(ctx context.Context, s pipeline.CompileSpec) (
 	if s.TargetOS == "darwin" {
 		env = append(env, "CGO_ENABLED=1")
 	}
+	if s.TargetOS == "windows" && s.Toolchain == "native" && manifestHostOS != "windows" {
+		// Wails' Windows runtime is pure Go. Off Windows there is no Windows C
+		// toolchain for CGo, so build without it, as the Taskfiles did.
+		env = append(env, "CGO_ENABLED=0")
+	}
 	if s.Toolchain == "zig" {
 		triple, err := zigTarget(s.TargetOS, s.TargetArch)
 		if err != nil {
@@ -1108,7 +1113,18 @@ func (h *manifestHandler) compileDocker(ctx context.Context, s pipeline.CompileS
 	for _, localRoot := range s.LocalRoots {
 		arguments = append(arguments, "-v", localRoot+":"+localRoot+readOnlySuffix)
 	}
-	for _, value := range []string{"GOOS=" + s.TargetOS, "GOARCH=" + s.TargetArch, "CGO_ENABLED=1", "CC=" + cc, "CXX=" + cxx} {
+	cacheSuffix := ""
+	if runtime == "podman" {
+		cacheSuffix = ":Z"
+	}
+	modCache, buildCache := goCacheDirectories(ctx, h.root)
+	arguments = append(arguments, dockerCacheArguments(manifestHostOS, modCache, buildCache, cacheSuffix)...)
+	arguments = append(arguments, dockerIdentityArguments(manifestHostOS, os.Getuid(), os.Getgid())...)
+	cflags := []string{"-w"}
+	if s.TargetOS == "darwin" && s.MinimumVersion != "" {
+		cflags = append(cflags, "-mmacosx-version-min="+s.MinimumVersion)
+	}
+	for _, value := range []string{"GOOS=" + s.TargetOS, "GOARCH=" + s.TargetArch, "CGO_ENABLED=1", "CC=" + cc, "CXX=" + cxx, "CGO_CFLAGS=" + strings.Join(cflags, " ")} {
 		arguments = append(arguments, "-e", value)
 	}
 	environment := environmentValues(declaredEnvironment(h.environment, s.Environment))
@@ -1136,6 +1152,62 @@ func (h *manifestHandler) compileDocker(ctx context.Context, s pipeline.CompileS
 		return pipeline.RunResult{}, fmt.Errorf("go module files need maintenance; run `go mod tidy` manually or set build.tidy: true: %w", err)
 	}
 	return pipeline.RunResult{Detail: result}, err
+}
+
+// goCacheDirectories returns the host Go module and build cache directories,
+// creating them so Docker does not create root-owned replacements. It asks the
+// go tool (as the Taskfile did) and falls back to the GOPATH layout when go is
+// unavailable.
+func goCacheDirectories(ctx context.Context, dir string) (string, string) {
+	modCache, buildCache := "", ""
+	command := exec.CommandContext(ctx, "go", "env", "GOMODCACHE", "GOCACHE")
+	command.Dir = dir
+	command.Env = append(os.Environ(), "GOWORK=off")
+	if output, err := command.Output(); err == nil {
+		lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+		if len(lines) == 2 {
+			modCache, buildCache = strings.TrimSpace(lines[0]), strings.TrimSpace(lines[1])
+		}
+	}
+	if modCache == "" {
+		if gopath := firstGOPATHEntry(); gopath != "" {
+			modCache = filepath.Join(gopath, "pkg", "mod")
+		}
+	}
+	if modCache != "" && os.MkdirAll(modCache, 0o755) != nil {
+		modCache = ""
+	}
+	if buildCache != "" && os.MkdirAll(buildCache, 0o755) != nil {
+		buildCache = ""
+	}
+	return modCache, buildCache
+}
+
+// dockerCacheArguments mounts the host module cache into every Docker compile
+// so dependencies are not downloaded again. The host build cache is mounted
+// only on Linux hosts; elsewhere it stays container-local because file sharing
+// with Docker Desktop makes it slow. GOCACHE and GOMODCACHE are pinned so they
+// resolve to the mounts regardless of the container user's HOME.
+func dockerCacheArguments(hostOS, modCache, buildCache, suffix string) []string {
+	const containerModCache, containerBuildCache = "/go/pkg/mod", "/tmp/go-build"
+	arguments := []string{"-e", "GOMODCACHE=" + containerModCache, "-e", "GOCACHE=" + containerBuildCache}
+	if modCache != "" {
+		arguments = append(arguments, "-v", modCache+":"+containerModCache+suffix)
+	}
+	if hostOS == "linux" && buildCache != "" {
+		arguments = append(arguments, "-v", buildCache+":"+containerBuildCache+suffix)
+	}
+	return arguments
+}
+
+// dockerIdentityArguments runs the container as the invoking Linux user so
+// build outputs written into the bind-mounted project are not root-owned. Docker
+// Desktop and Podman machines on macOS and Windows map ownership themselves.
+func dockerIdentityArguments(hostOS string, uid, gid int) []string {
+	if hostOS != "linux" {
+		return nil
+	}
+	return []string{"--user", fmt.Sprintf("%d:%d", uid, gid), "-e", "HOME=/tmp"}
 }
 
 func dockerCompilers(targetOS, targetArch string) (string, string, error) {
@@ -1189,10 +1261,33 @@ func compileGoArgs(s pipeline.CompileSpec) (string, []string) {
 	if s.Strip {
 		ld = appendUniqueStrings(ld, "-w", "-s")
 	}
+	// Production Windows executables are GUI-subsystem binaries; without this
+	// they open a console window alongside the application.
+	if s.TargetOS == "windows" && s.Production && !linkerFlagsSetWindowsGUI(ld) {
+		ld = append(ld, "-H=windowsgui")
+	}
 	if len(ld) > 0 {
 		args = append(args, "-ldflags", strings.Join(ld, " "))
 	}
 	return tool, args
+}
+
+// linkerFlagsSetWindowsGUI reports whether the linker flags already select the
+// Windows GUI subsystem, in either "-H=windowsgui" or "-H windowsgui" form.
+func linkerFlagsSetWindowsGUI(flags []string) bool {
+	var tokens []string
+	for _, flag := range flags {
+		tokens = append(tokens, strings.Fields(flag)...)
+	}
+	for index, token := range tokens {
+		if token == "-H=windowsgui" || token == "--H=windowsgui" {
+			return true
+		}
+		if (token == "-H" || token == "--H") && index+1 < len(tokens) && tokens[index+1] == "windowsgui" {
+			return true
+		}
+	}
+	return false
 }
 
 func (h *manifestHandler) windowsResourceOverlay(s pipeline.CompileSpec) (string, error) {

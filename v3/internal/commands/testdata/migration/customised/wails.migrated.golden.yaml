@@ -39,6 +39,8 @@ dev:
   exclude: [.git, .wails, bin, node_modules, frontend/dist]
   use_git_ignore: true
   grace_period_ms: 1500
+darwin:
+  minimum_version: "12.0"
 ios:
   minimum_version: "15.0"
 android:

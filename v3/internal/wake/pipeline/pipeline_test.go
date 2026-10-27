@@ -241,7 +241,7 @@ func TestDevelopmentPlanDoesNotInheritFiniteBuildPolicy(t *testing.T) {
 	assert.Equal(t, compile.Output, spec.Output)
 	assert.Equal(t, []string{"debug", "devtools", "cli-debug"}, spec.Tags)
 	assert.Empty(t, spec.LinkerFlags)
-	assert.Empty(t, spec.CompilerFlags)
+	assert.Equal(t, []string{"all=-l"}, spec.CompilerFlags)
 	assert.Empty(t, spec.GarbleArgs)
 	assert.False(t, spec.Production)
 	assert.False(t, spec.Obfuscated)
