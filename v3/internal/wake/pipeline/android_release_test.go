@@ -138,15 +138,15 @@ func TestAndroidBuildToolPathPrefersPATHThenNewestSDKBuildTools(t *testing.T) {
 	}
 	notFound := func(string) (string, error) { return "", assert.AnError }
 
-	path, ok := androidBuildToolPath("apksigner", getenv, func(string) (string, error) { return "/usr/bin/apksigner", nil }, glob)
+	path, ok := androidBuildToolPath("apksigner", "linux", getenv, func(string) (string, error) { return "/usr/bin/apksigner", nil }, glob)
 	assert.True(t, ok)
 	assert.Equal(t, "/usr/bin/apksigner", path)
 
-	path, ok = androidBuildToolPath("apksigner", getenv, notFound, glob)
+	path, ok = androidBuildToolPath("apksigner", "linux", getenv, notFound, glob)
 	assert.True(t, ok)
 	assert.Equal(t, "/sdk/build-tools/36.0.0/apksigner", path)
 
 	env = map[string]string{}
-	_, ok = androidBuildToolPath("apksigner", getenv, notFound, glob)
+	_, ok = androidBuildToolPath("apksigner", "linux", getenv, notFound, glob)
 	assert.False(t, ok)
 }

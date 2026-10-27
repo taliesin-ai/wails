@@ -129,7 +129,7 @@ func probeHostToolsAndCredentials(credentials []string, operations hostProbeOper
 			tools = append(tools, tool)
 		} else if tool == "apksigner" || tool == "zipalign" {
 			// SDK build-tools are usually not on PATH; resolve them from the SDK.
-			if _, ok := androidBuildToolPath(tool, operations.getenv, operations.lookPath, operations.glob); ok {
+			if _, ok := androidBuildToolPath(tool, operations.hostOS, operations.getenv, operations.lookPath, operations.glob); ok {
 				tools = append(tools, tool)
 			}
 		}
