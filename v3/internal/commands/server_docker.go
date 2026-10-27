@@ -22,6 +22,10 @@ const (
 	serverContainerPort      = 8080
 	serverFrontendCopyLine   = "COPY --from=builder /app/frontend/dist /frontend/dist"
 	serverFrontendCopySource = "/app/frontend/dist"
+	serverDockerignoreSuffix = ".dockerignore"
+	// serverDockerignore excludes host-only trees from the build context. The
+	// frontend is already built on the host, so node_modules is not needed.
+	serverDockerignore = "**/node_modules\n.git\n.wails\nbin\n"
 )
 
 // ServerDockerOptions configures `wails3 server docker`. Defaults come from
@@ -174,6 +178,12 @@ func resolveServerDockerfile(root string, frontend manifest.Frontend) (string, e
 		return "", err
 	}
 	if err := os.WriteFile(destination, []byte(content), 0o644); err != nil {
+		return "", err
+	}
+	// BuildKit reads <Dockerfile>.dockerignore next to the Dockerfile. The build
+	// context is the project root, so keep dependency trees, VCS data and Wails
+	// state out of it. This file belongs to the generated Dockerfile only.
+	if err := os.WriteFile(destination+serverDockerignoreSuffix, []byte(serverDockerignore), 0o644); err != nil {
 		return "", err
 	}
 	return serverDockerfileGenerate, nil

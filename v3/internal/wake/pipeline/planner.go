@@ -107,15 +107,23 @@ func validateServerRequest(config manifest.Config, request Request) error {
 	return nil
 }
 
-// serverEnvironment returns the environment for a server compile. Pure-Go
-// server binaries default to CGO_ENABLED=0; a manifest environment map (target
-// settings replace build settings, as for every compile) may still override it.
-func serverEnvironment(build, target map[string]string) map[string]string {
+// serverCrossCompiles reports whether a server target differs from the host.
+// Native server builds inherit Go's default (cgo on when a C compiler exists),
+// as the Taskfile build:server task does; cross-compiles disable cgo because
+// no C cross toolchain is required.
+func serverCrossCompiles(targetOS, targetArch string) bool {
+	return targetOS != runtime.GOOS || targetArch != runtime.GOARCH
+}
+
+// serverEnvironment returns the environment for a server compile. Cross-compiles
+// set CGO_ENABLED=0 unless declared; a manifest environment map (target settings
+// replace build settings, as for every compile) may always override it.
+func serverEnvironment(build, target map[string]string, cross bool) map[string]string {
 	environment := cloneStringMap(build)
 	if target != nil {
 		environment = cloneStringMap(target)
 	}
-	if _, declared := environment["CGO_ENABLED"]; !declared {
+	if _, declared := environment["CGO_ENABLED"]; !declared && cross {
 		if environment == nil {
 			environment = map[string]string{}
 		}
@@ -445,9 +453,11 @@ func planTarget(config manifest.Config, request Request, multiTarget bool) (Plan
 	if request.Server {
 		// Mirrors the Taskfile build:server flags: a development server keeps
 		// symbols and disables inlining; production trims paths and strips.
-		environment = serverEnvironment(config.Build.Environment, targetSettings.Environment)
+		environment = serverEnvironment(config.Build.Environment, targetSettings.Environment, serverCrossCompiles(request.TargetOS, request.TargetArch))
 		linkerFlags = withoutWindowsGUILinkFlag(linkerFlags)
 		if request.Development {
+			// Unlike GUI dev builds, server dev builds keep the manifest environment,
+			// as the Taskfile run:server task does.
 			compilerFlags = []string{"all=-l"}
 		} else {
 			trimPath, strip = true, true

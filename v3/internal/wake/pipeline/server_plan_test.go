@@ -1,6 +1,7 @@
 package pipeline
 
 import (
+	"runtime"
 	"strings"
 	"testing"
 
@@ -40,7 +41,7 @@ func TestServerBuildPlanIsAPlainServerBinary(t *testing.T) {
 	assert.True(t, spec.Strip)
 	assert.False(t, spec.VCSInfo)
 	assert.Equal(t, "native", spec.Toolchain)
-	assert.Equal(t, "0", spec.Environment["CGO_ENABLED"], "server compiles default to CGO off")
+	assert.Equal(t, expectedServerCGO(runtime.GOOS == "linux" && runtime.GOARCH == "amd64"), spec.Environment["CGO_ENABLED"], "native server builds inherit cgo; cross-compiles disable it")
 	assert.Contains(t, spec.Tags, "server")
 	assert.Contains(t, spec.Tags, "production")
 
@@ -94,7 +95,24 @@ func TestServerBuildPlanKeepsDarwinAsPlainBinary(t *testing.T) {
 	publish := publishNodeFor(t, plan)
 	assert.Equal(t, "bin/app-server", publish.Output)
 	compile := plan.Nodes["target:darwin/arm64:compile"].Spec.(CompileSpec)
-	assert.Equal(t, "0", compile.Environment["CGO_ENABLED"], "the Darwin GUI CGO override must not reach server compiles")
+	assert.Equal(t, expectedServerCGO(runtime.GOOS == "darwin" && runtime.GOARCH == "arm64"), compile.Environment["CGO_ENABLED"], "the Darwin GUI CGO override must not reach server compiles")
+}
+
+// expectedServerCGO is the CGO_ENABLED value a native server build must carry:
+// none, so Go's default (cgo on with a C compiler) applies.
+func expectedServerCGO(native bool) string {
+	if native {
+		return ""
+	}
+	return "0"
+}
+
+// otherServerTarget returns a desktop target that differs from the test host.
+func otherServerTarget() [2]string {
+	if runtime.GOOS == "linux" {
+		return [2]string{"windows", "amd64"}
+	}
+	return [2]string{"linux", "amd64"}
 }
 
 func TestServerBuildPlanCompileEnvironmentIsOverridable(t *testing.T) {
@@ -103,9 +121,19 @@ func TestServerBuildPlanCompileEnvironmentIsOverridable(t *testing.T) {
 	plan, err := PlanBuild(config, Request{Verb: "build", TargetOS: "linux", TargetArch: "amd64", Server: true})
 	require.NoError(t, err)
 	assert.Equal(t, map[string]string{"CGO_ENABLED": "1", "SHARED": "build"}, plan.Nodes["target:linux/amd64:compile"].Spec.(CompileSpec).Environment)
-	assert.Equal(t, map[string]string{"CGO_ENABLED": "0"}, serverEnvironment(nil, nil))
-	assert.Equal(t, map[string]string{"CGO_ENABLED": "0", "SHARED": "build"}, serverEnvironment(map[string]string{"SHARED": "build"}, nil))
-	assert.Equal(t, map[string]string{"CGO_ENABLED": "0", "SHARED": "target"}, serverEnvironment(map[string]string{"SHARED": "build"}, map[string]string{"SHARED": "target"}))
+	assert.Equal(t, map[string]string{"CGO_ENABLED": "0"}, serverEnvironment(nil, nil, true))
+	assert.Nil(t, serverEnvironment(nil, nil, false), "native server builds add no cgo override")
+	assert.Equal(t, map[string]string{"SHARED": "build"}, serverEnvironment(map[string]string{"SHARED": "build"}, nil, false))
+	assert.Equal(t, map[string]string{"CGO_ENABLED": "0", "SHARED": "build"}, serverEnvironment(map[string]string{"SHARED": "build"}, nil, true))
+	assert.Equal(t, map[string]string{"CGO_ENABLED": "1"}, serverEnvironment(map[string]string{"CGO_ENABLED": "1"}, nil, true), "a declared value overrides the cross default")
+	assert.Equal(t, map[string]string{"CGO_ENABLED": "0", "SHARED": "target"}, serverEnvironment(map[string]string{"SHARED": "build"}, map[string]string{"SHARED": "target"}, true))
+
+	// A cross-compile gets CGO_ENABLED=0 for every platform, including darwin.
+	cross := otherServerTarget()
+	config.Build.Environment = nil
+	plan, err = PlanBuild(config, Request{Verb: "build", TargetOS: cross[0], TargetArch: cross[1], Server: true})
+	require.NoError(t, err)
+	assert.Equal(t, "0", plan.Nodes[NodeKey("target:"+cross[0]+"/"+cross[1]+":compile")].Spec.(CompileSpec).Environment["CGO_ENABLED"])
 }
 
 func TestServerBuildPlanDropsWindowsGUISubsystemLinkFlag(t *testing.T) {

@@ -93,6 +93,24 @@ func TestResolveServerDockerfileWritesEmbeddedTemplate(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, string(content), "ARG RUNTIME_IMAGE=gcr.io/distroless/static-debian12")
 	assert.Contains(t, string(content), "COPY --from=builder /app/frontend/dist /frontend/dist")
+
+	ignore, err := os.ReadFile(filepath.Join(root, ".wails", "docker", "Dockerfile.server.dockerignore"))
+	require.NoError(t, err, "BuildKit reads <Dockerfile>.dockerignore next to the generated Dockerfile")
+	assert.Contains(t, string(ignore), "**/node_modules")
+	assert.Contains(t, string(ignore), ".git")
+	assert.Contains(t, string(ignore), ".wails")
+	assert.Contains(t, string(ignore), "bin")
+}
+
+func TestResolveServerDockerfileNeverWritesIgnoreForUserFile(t *testing.T) {
+	root, _ := loadServerTestProject(t)
+	legacy := filepath.Join(root, "build", "docker", "Dockerfile.server")
+	require.NoError(t, os.MkdirAll(filepath.Dir(legacy), 0o755))
+	require.NoError(t, os.WriteFile(legacy, []byte("FROM scratch\n"), 0o644))
+	_, err := resolveServerDockerfile(root, manifest.Frontend{Directory: "frontend", OutputDirectory: "dist"})
+	require.NoError(t, err)
+	_, statErr := os.Stat(legacy + ".dockerignore")
+	assert.ErrorIs(t, statErr, os.ErrNotExist, "user-owned Dockerfiles keep their own ignore rules")
 }
 
 func TestRenderServerDockerfileFollowsFrontendLayout(t *testing.T) {
