@@ -64,6 +64,10 @@ func TestStockTemplatesMigrateWithoutBlockers(t *testing.T) {
 			assert.True(t, loaded.Config.Build.Tidy, "stock go:mod:tidy must carry over as build.tidy")
 			// Stock Linux packaging creates the same four formats as wails3 package.
 			assert.Equal(t, []string{"appimage", "deb", "rpm", "archlinux"}, loaded.Config.Package.Linux.Formats)
+			// The stock create:appimage task generated its own desktop entry; it never used build/linux/desktop.
+			assert.Empty(t, loaded.Config.Package.Linux.AppImage.DesktopEntry)
+			assert.Equal(t, []string{"Development"}, loaded.Config.Package.Linux.AppImage.Categories)
+			assert.NotEmpty(t, loaded.Config.Targets.Linux.DesktopEntry, "deb and rpm keep the packaged desktop entry")
 			assert.Contains(t, migrationDiagnosticCodes(report), "translated-package-formats")
 			assert.Contains(t, migrationDiagnosticCodes(report), "darwin-dmg-default")
 			buildServer := 0

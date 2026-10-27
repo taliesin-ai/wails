@@ -366,7 +366,11 @@ func applyConventionalLegacyAssets(root string, report *MigrationReport, doc *ma
 		doc.Signing.IOS.Enabled = true
 	}
 	doc.Package.Linux.AppImage.Icon = doc.Project.Icon
-	doc.Package.Linux.AppImage.DesktopEntry = doc.Targets.Linux.DesktopEntry
+	// build/linux/desktop is the deb/rpm entry (Exec=/usr/local/bin/<app> %u). The stock
+	// create:appimage task never used it: it generated its own desktop entry with
+	// Categories=Development;, so AppImage packages mirror that instead of inheriting
+	// the packaged desktop file.
+	doc.Package.Linux.AppImage.Categories = []string{"Development"}
 	return nil
 }
 

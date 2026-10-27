@@ -54,3 +54,6 @@ targets:
   linux/arm64: {}
   ios/arm64: {}
   android/arm64: {}
+packages:
+  appimage:
+    categories: [Development]

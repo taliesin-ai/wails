@@ -66,3 +66,4 @@ packages:
     template: build/windows/nsis/project.nsi
   appimage:
     icon: build/appicon.png
+    categories: [Development]
