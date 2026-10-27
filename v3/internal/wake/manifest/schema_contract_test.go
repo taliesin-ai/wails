@@ -457,7 +457,7 @@ func TestEjectionCoversEveryPlatformSchemaField(t *testing.T) {
 	doc.Package.Windows.Formats = []string{"msix"}
 	doc.Package.Linux.Formats = []string{"deb"}
 	doc.Package.Android.Formats = []string{"apk"}
-	signing := SigningPlatform{Enabled: true, Identity: "identity", Certificate: "certificate", Thumbprint: "thumbprint", TimestampServer: "timestamp", Entitlements: "entitlements", ProvisioningProfile: "profile", KeyAlias: "alias", Credential: "credential", Notarize: true, NotarizationCredential: "notary"}
+	signing := SigningPlatform{Enabled: true, Identity: "identity", TeamID: "ABCDE12345", Certificate: "certificate", Thumbprint: "thumbprint", TimestampServer: "timestamp", Entitlements: "entitlements", ProvisioningProfile: "profile", KeyAlias: "alias", Credential: "credential", Notarize: true, NotarizationCredential: "notary"}
 	doc.Signing.Windows, doc.Signing.Darwin, doc.Signing.Linux, doc.Signing.IOS, doc.Signing.Android = signing, signing, signing, signing, signing
 
 	encoded, err := EncodeConfig(configFromDocument(t.TempDir(), "", doc))

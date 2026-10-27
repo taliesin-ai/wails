@@ -353,6 +353,7 @@ type Signing struct {
 type SigningPlatform struct {
 	Enabled                bool   `json:"enabled"`
 	Identity               string `json:"identity,omitempty"`
+	TeamID                 string `json:"team_id,omitempty"`
 	Certificate            string `json:"certificate,omitempty"`
 	Thumbprint             string `json:"thumbprint,omitempty"`
 	TimestampServer        string `json:"timestamp_server,omitempty"`

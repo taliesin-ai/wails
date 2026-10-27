@@ -267,7 +267,7 @@ setting should be saved in the project.
 | `CODESIGN_IDENTITY` | `darwin.signing.identity` or `ios.signing.identity` | |
 | `ENTITLEMENTS_FILE` | `darwin.signing.entitlements` | |
 | `PROVISIONING_PROFILE` | `ios.signing.provisioning_profile` | |
-| `TEAM_ID` | Gap | Set the team through the signing identity. |
+| `TEAM_ID` | `ios.signing.team_id` | 10-character Apple team identifier. Written as `DEVELOPMENT_TEAM` into the generated Xcode project. Device builds without `ios.signing.identity` select the keychain identity for this team. |
 
 ### Mobile variables
 
@@ -286,7 +286,7 @@ setting should be saved in the project.
 | `IOS_PLATFORM` | Profile target `destination` (`simulator` or `device`) | |
 | `IOS_TARGET`, `IOS_SDK`, `IOS_VERSION_MIN_FLAG` | Automatic | |
 | `UDID` | `wails3 run --device` | List identifiers with `wails3 ios devices`. |
-| `PROJECT`, `SCHEME`, `CONFIG`, `DERIVED`, `TEAM_ID` (`ios:run:device`) | Automatic, or `ios.signing.*` | Wake generates the Xcode project. Use `wails3 ios xcode` to open it. |
+| `PROJECT`, `SCHEME`, `CONFIG`, `DERIVED` (`ios:run:device`) | Automatic | Wake generates the Xcode project. Use `wails3 ios xcode` to open it. |
 
 ### Docker and server variables
 
@@ -309,8 +309,8 @@ produce a diagnostic, and the Taskfile stays in use for that behaviour.
 ### Translated automatically
 
 - Root variables: `APP_NAME` sets the binary name, `BIN_DIR` sets
-  `build.output`, `PACKAGE_MANAGER` sets the frontend commands, and `VITE_PORT`
-  sets `dev.port`.
+  `build.output`, `PACKAGE_MANAGER` sets the frontend commands, `VITE_PORT`
+  sets `dev.port`, and a valid 10-character `TEAM_ID` sets `ios.signing.team_id`.
 - Custom frontend build and dev scripts, which become `frontend.build` and
   `frontend.dev`.
 - Extra build tags, linker flags and environment variables on the build tasks,
@@ -352,7 +352,6 @@ custom steps. Write that script yourself and make the hook invoke it on Windows.
 
 ## Remaining gaps
 
-- `TEAM_ID` has no manifest field. Set the team through the signing identity.
 - `CROSS_IMAGE` cannot be renamed. Build or pull the image with `wails3 setup docker`.
 - `SIGN_ROLE` has no manifest field. See the variable table.
 

@@ -27,6 +27,7 @@ var (
 	iosXcodeArchiveRef   = regexp.MustCompile(`path = "\.\./\.\./\.\./bin/[^"]*";`)
 	iosXcodeBuildScript  = regexp.MustCompile(`shellScript = "(?:[^"\\]|\\.)*";`)
 	iosXcodeSDKRoot      = regexp.MustCompile(`SDKROOT = iphoneos;`)
+	iosXcodeBuildConfig  = regexp.MustCompile(`buildSettings = \{\n`)
 	iosXcodePrebuiltNote = `shellScript = "set -e\necho \"Go c-archive is prebuilt by wails3 ios xcode\"\n";`
 )
 
@@ -75,7 +76,7 @@ func IOSXcode(options *IOSXcodeOptions, arguments []string) error {
 		Source:      filepath.Join(root, filepath.FromSlash(pkg.Assets), "ios", "xcode"),
 		Destination: project,
 		Prepare: func(staged string) error {
-			return prepareIOSXcodeProject(staged, archive)
+			return prepareIOSXcodeProject(staged, archive, loaded.Config.Signing.IOS.TeamID)
 		},
 	})
 	if err != nil {
@@ -96,7 +97,7 @@ func IOSXcode(options *IOSXcodeOptions, arguments []string) error {
 
 // prepareIOSXcodeProject links the wake-built c-archive into the staged project
 // and rewrites the generated project to use it.
-func prepareIOSXcodeProject(staged, archive string) error {
+func prepareIOSXcodeProject(staged, archive, team string) error {
 	libName := filepath.Base(archive)
 	libDir := filepath.Join(staged, "lib")
 	if err := os.MkdirAll(libDir, 0o755); err != nil {
@@ -110,7 +111,7 @@ func prepareIOSXcodeProject(staged, archive string) error {
 	if err != nil {
 		return fmt.Errorf("read generated project: %w", err)
 	}
-	rewritten, err := rewriteIOSXcodeProject(source, libName)
+	rewritten, err := rewriteIOSXcodeProject(source, libName, team)
 	if err != nil {
 		return err
 	}
@@ -123,8 +124,12 @@ func prepareIOSXcodeProject(staged, archive string) error {
 
 // rewriteIOSXcodeProject points the archive reference at lib/<name>, replaces
 // the legacy Go build phase with a no-op, and sets SDKROOT to auto so Xcode
-// picks the simulator or device SDK from the chosen destination.
-func rewriteIOSXcodeProject(source []byte, libName string) ([]byte, error) {
+// picks the simulator or device SDK from the chosen destination. When team is
+// set, DEVELOPMENT_TEAM is added to every build configuration.
+func rewriteIOSXcodeProject(source []byte, libName, team string) ([]byte, error) {
+	if team != "" && !manifest.IsValidAppleTeamID(team) {
+		return nil, fmt.Errorf("ios.signing.team_id %q is not a valid Apple team identifier", team)
+	}
 	if len(iosXcodeArchiveRef.FindAll(source, -1)) != 1 {
 		return nil, fmt.Errorf("generated project.pbxproj has an unexpected Go archive reference")
 	}
@@ -137,6 +142,12 @@ func rewriteIOSXcodeProject(source []byte, libName string) ([]byte, error) {
 	output := iosXcodeArchiveRef.ReplaceAllLiteral(source, []byte(fmt.Sprintf(`path = "lib/%s";`, libName)))
 	output = iosXcodeBuildScript.ReplaceAllLiteral(output, []byte(iosXcodePrebuiltNote))
 	output = iosXcodeSDKRoot.ReplaceAllLiteral(output, []byte("SDKROOT = auto;"))
+	if team != "" {
+		if len(iosXcodeBuildConfig.FindAll(output, -1)) == 0 {
+			return nil, fmt.Errorf("generated project.pbxproj has no build configurations for DEVELOPMENT_TEAM")
+		}
+		output = iosXcodeBuildConfig.ReplaceAllLiteral(output, []byte("buildSettings = {\n\t\t\t\tDEVELOPMENT_TEAM = "+team+";\n"))
+	}
 	return output, nil
 }
 

@@ -122,6 +122,7 @@ Fields are listed using schema paths. Named maps use placeholders such as `targe
 | `ios.signing.identity` | string | no |  | `"Developer ID Application: Example"` |  | Signing identity selected through the platform toolchain. |
 | `ios.signing.key_alias` | string | no |  | `"upload"` |  | Alias of the Android signing key. |
 | `ios.signing.provisioning_profile` | string | no |  | `"signing/app.mobileprovision"` |  | Project-relative Apple provisioning profile. |
+| `ios.signing.team_id` | string | no |  | `"ABCDE12345"` | ios | Apple Developer team identifier: 10 uppercase letters or digits. Used for iOS device signing. |
 | `ios.signing.thumbprint` | string | no |  | `"0123456789ABCDEF"` |  | Windows certificate thumbprint. |
 | `ios.signing.timestamp_server` | string | no |  | `"https://timestamp.example.com"` |  | URL of the signing timestamp service. |
 | `linux` | object | no |  | `{}` |  | Linux platform settings. |

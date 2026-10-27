@@ -94,6 +94,7 @@ func UpdateSigningPlatform(start, platform string, signing SigningPlatform) erro
 			signingBody := yamlEnsureMap(platformBody, "signing")
 			yamlUpdateOptionalString(signingBody, "credential", signing.Credential)
 			yamlUpdateOptionalString(signingBody, "identity", signing.Identity)
+			yamlUpdateOptionalString(signingBody, "team_id", signing.TeamID)
 			yamlUpdateOptionalString(signingBody, "certificate", signing.Certificate)
 			yamlUpdateOptionalString(signingBody, "thumbprint", signing.Thumbprint)
 			yamlUpdateOptionalString(signingBody, "timestamp_server", signing.TimestampServer)
@@ -114,7 +115,7 @@ func UpdateSigningPlatform(start, platform string, signing SigningPlatform) erro
 }
 
 func signingHasValues(signing SigningPlatform) bool {
-	return signing.Identity != "" || signing.Certificate != "" || signing.Thumbprint != "" || signing.TimestampServer != "" || signing.Entitlements != "" || signing.ProvisioningProfile != "" || signing.KeyAlias != "" || signing.Credential != ""
+	return signing.Identity != "" || signing.TeamID != "" || signing.Certificate != "" || signing.Thumbprint != "" || signing.TimestampServer != "" || signing.Entitlements != "" || signing.ProvisioningProfile != "" || signing.KeyAlias != "" || signing.Credential != ""
 }
 
 func updateManifest(start string, mutate func(*yaml.Node) error) error {

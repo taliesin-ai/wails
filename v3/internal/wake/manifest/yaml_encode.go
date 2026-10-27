@@ -295,7 +295,7 @@ func encodeYAMLPlatform(name string, platform Platform, signing SigningPlatform,
 	if signing.Enabled || signingHasValues(signing) {
 		node := yamlMap()
 		for _, entry := range []struct{ key, value string }{
-			{"credential", signing.Credential}, {"identity", signing.Identity}, {"certificate", signing.Certificate},
+			{"credential", signing.Credential}, {"identity", signing.Identity}, {"team_id", signing.TeamID}, {"certificate", signing.Certificate},
 			{"thumbprint", signing.Thumbprint}, {"timestamp_server", signing.TimestampServer}, {"entitlements", signing.Entitlements},
 			{"provisioning_profile", signing.ProvisioningProfile}, {"key_alias", signing.KeyAlias},
 		} {
